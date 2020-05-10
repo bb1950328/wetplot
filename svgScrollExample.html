@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <style>
+        #main-svg {
+            background: yellow;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div id="wrapper">
+    <svg width="500" height="200" viewBox="0 0 500 200" id="main-svg">
+        <line x1="10" y1="10" x2="4990" y2="190" stroke="red"></line>
+        <circle cx="10" cy="10" color="blue" r="5"></circle>
+    </svg>
+</div>
+<script>
+    let _last_mouse_move_x;
+
+    function shiftViewBox(delta = 0) {
+        if (!delta) {
+            return;
+        }
+        let [x1, y1, x2, y2] = document.getElementById("main-svg").getAttribute("viewBox").split(" ");
+        x1 = Number.parseInt(x1) + delta;
+        let newValue = [x1, y1, x2, y2].join(" ");
+        console.log(newValue);
+        document.getElementById("main-svg").setAttribute("viewBox", newValue);
+    }
+
+    let wrapperElement = document.getElementById("wrapper");
+    wrapperElement.onwheel = function (event) {
+        event.preventDefault();
+        console.log(event.deltaX);
+        console.log(event.deltaY);
+        shiftViewBox(event.deltaX * 10);
+        shiftViewBox(event.deltaY * 10);
+    }
+    wrapperElement.onmousedown = function (event) {
+        event.preventDefault();
+
+        _last_mouse_move_x = event.pageX;
+
+        function onMouseMove(event) {
+            if (event.pageX <= 2 || event.pageX - 2 > window.innerWidth) {
+                stopDrag();
+                return;
+            }
+            let delta = _last_mouse_move_x - event.pageX;
+            shiftViewBox(delta);
+            _last_mouse_move_x = event.pageX;
+        }
+
+        document.addEventListener('mousemove', onMouseMove);
+
+        function stopDrag() {
+            document.removeEventListener('mousemove', onMouseMove);
+            wrapperElement.onmouseup = null;
+        }
+
+        wrapperElement.onmouseup = stopDrag;
+
+    };
+
+    let svgElement = document.getElementById("main-svg");
+    let [x, y] = [0, 0];
+    for (let i = 0; i < 100; i++) {
+        let circle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        circle.setAttribute("x", x);
+        circle.setAttribute("y", y);
+        circle.setAttribute("r", 5);
+        circle.innerHTML = x + ";" + y;
+        svgElement.appendChild(circle);
+        x += 250;
+        y += 10;
+    }
+</script>
+</body>
+</html>

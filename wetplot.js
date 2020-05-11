@@ -4,15 +4,21 @@ class Wetplot {
         container_id: "wetplot-container",
         width: 500,
         height: 1000,
+        time_offset: (+new Date()) - 1000 * 60 * 60 * 24,//in seconds, default is one day before
+        seconds_per_pixel: 60,
+        caching_enabled: false,
     }
 
     _line_config = {
         "###default###": {
-            "type": "line",//also possible: "bar"
+            "type": "line",
             "color": "#000000",
             "name": "?",
+            "unit": "1",
         }
     }
+
+    _data = null;
 
     initialize() {
         this._svgElement = document.createElement("svg");
@@ -44,6 +50,15 @@ class Wetplot {
             this._line_config[lineId][property] = value;
         }
         return this._line_config[lineId][property];
+    }
+
+    add2dArrayData(heads, values) {
+        let newData = new WetplotData(heads, values);
+        if (this._data === null) {
+            this._data = newData;
+        } else {
+            this._data = WetplotData.concatenate(this._data, newData);
+        }
     }
 
     _moveViewBoxPixels(deltaPx = 0) {
@@ -90,5 +105,72 @@ class Wetplot {
 
             wrapperElement.onmouseup = stopDrag;
         };
+    }
+
+    _seconds_to_x_coords(seconds) {
+        return Math.round(seconds - this._config["time_offset"] / this._config["seconds_per_pixel"]);
+    }
+
+    _x_coords_to_seconds(x_coord) {
+        return x_coord * this._config["seconds_per_pixel"] + this._config["time_offset"]
+    }
+}
+
+class WetplotData {
+    constructor(heads = [], values = []) {
+        this.heads = heads;
+        this.values = values;
+    }
+
+    heads = []
+    values = []
+
+    getValue(rowIndex, columnName) {
+        return this.values[rowIndex][this.heads.indexOf(columnName)];
+    }
+
+    static concatenate(a, b) {
+        let result = new WetplotData();
+        let heads_missing_in_a = [];
+        let heads_missing_in_b = [];
+        a.heads.forEach(head => {
+            if (b.heads.indexOf(head) === -1) {
+                heads_missing_in_b.push(head);
+            }
+        });
+        b.heads.forEach(head => {
+            if (a.heads.indexOf(head) === -1) {
+                heads_missing_in_a.push(head);
+            }
+        });
+        this._add_columns(a, heads_missing_in_a);
+        this._add_columns(b, heads_missing_in_b);
+        let aTime0 = a.getValue(0, "Time");
+        let bTime0 = b.getValue(0, "Time");
+        let time_cursor = Math.min(aTime0, bTime0);
+        let a_cursor = 0;
+        let b_cursor = 0;
+        while (a_cursor < a.values.length || b_cursor < b.values.length) {
+            let diffA = a.getValue(a_cursor, "Time") - time_cursor;
+            let diffB = b.getValue(b_cursor, "Time") - time_cursor;
+            if (diffA <= diffB) {
+                //todo
+            }
+        }
+        return result;
+    }
+
+    static _add_columns(data, columns, fillvalue = null) {
+        let num = columns.length;
+        if (num <= 0) {
+            return;
+        }
+        let rowcount = data.values.length;
+        for (let row = 0; row < rowcount; row++) {
+            for (let i = 0; i < num; i++) {
+                data.values[row].push(fillvalue);
+            }
+        }
+        columns.forEach(col => data.heads.push(col));
     }
 }

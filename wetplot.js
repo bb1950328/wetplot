@@ -7,6 +7,8 @@ class Wetplot {
         time_offset: (+new Date()) - 1000 * 60 * 60 * 24,//in seconds, default is one day before
         seconds_per_pixel: 60,
         caching_enabled: false,
+        db_name: "wetplot",
+        intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
     }
 
     _line_config = {
@@ -29,6 +31,41 @@ class Wetplot {
         this._svgElement.setAttribute("height", this._config["height"]);
         this._svgElement.setAttribute("viewBox", "0 0 " + this._config["width"] + " " + this._config["height"]);
         this._addPanEventListeners();
+        this._openDb();
+    }
+
+    _openDb(successCallback=(db)=>{}) {
+        let request = window.indexedDB.open(this._config["db_name"], 1);
+        let time_intervals = this._config["intervals"];
+        request.onerror = function (event) {
+            console.error(event.target.errorCode);
+        }
+        request.onsuccess = function (event) {
+            let db = event.target.result;
+            successCallback(db);
+        }
+        request.onupgradeneeded = function (event) {
+            let db = event.target.result;
+            time_intervals.forEach(interval => {
+                let objectStore = db.createObjectStore(interval, {keyPath: "Time"});
+            });
+        }
+    }
+
+    _addDataToDb(interval, wetplotData) {
+        this._openDb((db) => {
+            let transaction = db.transaction([interval], "readwrite");
+            let objectStore = transaction.objectStore(interval);
+            wetplotData.forEachObject(objectStore.add);
+        });
+    }
+
+    _getDataFromDb(interval, startTs, endTs) {
+        this._openDb((db) => {
+            let transaction = db.transaction(interval);
+            let objectStore = transaction.objectStore(interval);
+            // TODO SELECT * FROM objectStore WHERE startTs <= Time <= endTs
+        })
     }
 
     config(key, value = undefined) {
@@ -154,7 +191,8 @@ class WetplotData {
             let diffA = a.getValue(a_cursor, "Time") - time_cursor;
             let diffB = b.getValue(b_cursor, "Time") - time_cursor;
             if (diffA <= diffB) {
-                //todo
+                result.values.push();
+                //todo  implement or delete
             }
         }
         return result;
@@ -172,5 +210,15 @@ class WetplotData {
             }
         }
         columns.forEach(col => data.heads.push(col));
+    }
+
+    forEachObject(callbackFunction) {
+        let obj = {};
+        this.values.forEach(row => {
+            for (let i = 0; i < this.heads.length; i++) {
+                obj[this.heads[i]] = row[i];
+                callbackFunction(obj);
+            }
+        });
     }
 }

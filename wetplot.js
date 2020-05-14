@@ -1,11 +1,33 @@
+const DEFAULT_LINE_CODE = "###default###";
+
+// language=CSS
+const WETPLOT_CSS = `
+    .xAxisText {
+        fill: #000000;
+        font-size: 10px;
+    }
+
+    .linePath {
+        fill: none;
+    }
+
+    .verticalGrid {
+        fill: none;
+        stroke: #666;
+    }
+`;
+
 class Wetplot {
     _config = {
         rows: [],
         container_id: "wetplot-container",
-        width: 500,
-        height: 1000,
-        time_offset: (+new Date()) - 1000 * 60 * 60 * 24,//in seconds, default is one day before
+        width: 1000,
+        height: 500,
+        background_color: "#c6be91",
+        time_offset: Math.round(((+new Date()) - (1000 * 60 * 60 * 24)) / 1000),//in seconds, default is one day before
+        time_lenght: 60 * 60 * 24*2, // in seconds
         seconds_per_pixel: 60,
+        seconds_per_grid_line: 3600,
         caching_enabled: false,
         db_name: "wetplot",
         intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
@@ -17,21 +39,34 @@ class Wetplot {
             "color": "#000000",
             "name": "?",
             "unit": "1",
+            "auto_min_max": false,
+            "min": -1,
+            "max": 25,
         }
     }
 
     _data = null;
 
     initialize() {
-        this._svgElement = document.createElement("svg");
+        this._svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         this._wrapperElement = document.getElementById(this._config["container_id"]);
         this._wrapperElement.appendChild(this._svgElement);
+        this._wrapperElement.style["width"] = this._config["width"] + "px";
+        this._wrapperElement.style["height"] = this._config["height"] + "px";
         this._svgElement.style.pointerEvents = "none";
+        this._svgElement.style.position = "block";
+        this._svgElement.style["width"] = this._config["width"] + "px";
+        this._svgElement.style["height"] = this._config["height"] + "px";
+        this._svgElement.style["background-color"] = this._config["background_color"]
         this._svgElement.setAttribute("width", this._config["width"]);
         this._svgElement.setAttribute("height", this._config["height"]);
         this._svgElement.setAttribute("viewBox", "0 0 " + this._config["width"] + " " + this._config["height"]);
+        this._add_style();
         this._addPanEventListeners();
         this._openDb();
+        this._rebuildAllLines();
+        this._draw_x_axis();
+        this._draw_vertical_grid();
     }
 
     _openDb(successCallback = (db) => {
@@ -99,6 +134,87 @@ class Wetplot {
         });
     }
 
+    _add_style() {
+        const style = document.createElement('style');
+        style.textContent = WETPLOT_CSS;
+        document.head.append(style);
+    }
+
+    _draw_x_axis() {
+        let group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("id", "xAxisGroup");
+        this._svgElement.appendChild(group);
+
+        let gridPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        let gridD = "";
+
+        let seconds_step = this._config["seconds_per_grid_line"];
+        let seconds_start = this._config["time_offset"];
+        for (let secs = Math.round(seconds_start/seconds_step)*seconds_step; secs < seconds_start+this._config["time_lenght"]; secs += seconds_step) {
+            let date = new Date(secs * 1000);//todo timezone issue?
+            let x = Math.round(this._seconds_to_x_coords(secs));
+            let dateForHuman = date.toLocaleDateString() + " " + date.toLocaleTimeString();
+            let txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            txt.innerHTML = dateForHuman;
+            txt.setAttribute("x", 0);
+            txt.setAttribute("y", 0);
+            txt.setAttribute("transform", "rotate(90,0,0) translate(" + 10 + " " + -x + ")")
+            txt.classList.add("xAxisText");
+            group.appendChild(txt);
+
+            gridD += "M" + x + " 0 V " + this._config["height"];
+        }
+
+        gridPath.setAttribute("d", gridD);
+        gridPath.classList.add("verticalGrid");
+        this._svgElement.appendChild(gridPath);
+    }
+
+    _draw_vertical_grid() {
+
+    }
+
+    _rebuildAllLines() {
+        Object.getOwnPropertyNames(this._line_config).forEach(lineCode => {
+            if (lineCode !== DEFAULT_LINE_CODE) {
+                this._rebuildLine(lineCode);
+            }
+        });
+    }
+
+    _rebuildLine(lineCode) {
+        let colNum = this._data.heads.indexOf(lineCode);
+        let timeCol = this._data.heads.indexOf("Time");
+        const config = this._line_config[lineCode];
+        if (config["auto_min_max"]) {
+            let [min, max] = this._data.getMinMaxForColumn(colNum);
+            config["min"] = min;
+            config["max"] = max;
+        }
+        let path = "M";
+        let first = true;
+        for (let i = 0; i < this._data.values.length; i++) {
+            let x = this._seconds_to_x_coords(this._data.values[i][timeCol]);
+            let y = this._value_to_y_coord(lineCode, this._data.values[i][colNum]);
+            if (first) {
+                first = false;
+            } else {
+                path += " L";
+            }
+            path += (" " + Math.round(x) + " " + Math.round(y));
+        }
+        console.log(path);
+
+        let pathElement = document.getElementById("path" + lineCode);
+        if (pathElement === null) {
+            pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            this._svgElement.appendChild(pathElement);
+            pathElement.style.stroke = config["color"];
+            pathElement.classList.add("linePath");
+        }
+        pathElement.setAttribute("d", path);
+    }
+
     config(key, value = undefined) {
         if (value !== undefined) {
             this._config[key] = value;
@@ -107,10 +223,10 @@ class Wetplot {
     }
 
     addLine(lineId) {
-        if (lineId === "###default###") {
+        if (lineId === DEFAULT_LINE_CODE) {
             throw Error("invalid lineId");
         }
-        this._line_config[lineId] = this._line_config["###default###"];
+        this._line_config[lineId] = {...this._line_config[DEFAULT_LINE_CODE]};
     }
 
     lineConfig(lineId, property, value = undefined) {
@@ -141,26 +257,26 @@ class Wetplot {
 
     _addPanEventListeners() {
         let wrapperElement = this._wrapperElement;
-        let shiftViewBox = this._moveViewBoxPixels;
         let _last_mouse_move_x;
-        wrapperElement.onwheel = function (event) {
+        wrapperElement.onwheel = (event) => {
             event.preventDefault();
             console.log(event.deltaX);
             console.log(event.deltaY);
-            shiftViewBox(event.deltaX * 10);
-            shiftViewBox(event.deltaY * 10);
+            this._moveViewBoxPixels(event.deltaX * 10);
+            this._moveViewBoxPixels(event.deltaY * 10);
         }
-        wrapperElement.onmousedown = function (event) {
+        wrapperElement.onmousedown = (event) => {
             event.preventDefault();
+            console.log("mousedown");
             _last_mouse_move_x = event.pageX;
 
-            function onMouseMove(event) {
+            let onMouseMove = (event) => {
                 if (event.pageX <= 2 || event.pageX - 2 > window.innerWidth) {
                     stopDrag();
                     return;
                 }
                 let delta = _last_mouse_move_x - event.pageX;
-                shiftViewBox(delta);
+                this._moveViewBoxPixels(delta);
                 _last_mouse_move_x = event.pageX;
             }
 
@@ -176,11 +292,17 @@ class Wetplot {
     }
 
     _seconds_to_x_coords(seconds) {
-        return Math.round(seconds - this._config["time_offset"] / this._config["seconds_per_pixel"]);
+        return Math.round((seconds - this._config["time_offset"]) / this._config["seconds_per_pixel"]);
     }
 
     _x_coords_to_seconds(x_coord) {
         return x_coord * this._config["seconds_per_pixel"] + this._config["time_offset"]
+    }
+
+    _value_to_y_coord(lineCode, value) {
+        let [min, max] = [this._line_config[lineCode]["min"], this._line_config[lineCode]["max"]];
+        let span = max - min;
+        return this._config["height"] - this._config["height"] * ((value - min) / span)
     }
 }
 
@@ -249,11 +371,11 @@ class WetplotData {
             for (let i = 0; i < this.heads.length; i++) {
                 obj[this.heads[i]] = row[i];
             }
-            callbackFunction({...obj});  // these weird dots are to clone object
+            callbackFunction({...obj});  // these weird dots are to clone the object
         });
     }
 
-    static fromObjectArray(objArray=[]) {
+    static fromObjectArray(objArray = []) {
         let result = new WetplotData();
         objArray.forEach(obj => {
             let row = [];
@@ -267,6 +389,22 @@ class WetplotData {
             });
             result.values.push(row);
         });
+        result.values.sort((a, b) => (a["Time"] > b["Time"]) ? 1 : ((b["Time"] > a["Time"]) ? -1 : 0));// todo check if its not reversed
         return result;
+    }
+
+    getMinMaxForColumn(colIndex = 0) {
+        let minVal = undefined;
+        let maxVal = undefined;
+        for (let i = 0; i < this.values.length; i++) {
+            let val = this.values[i][colIndex];
+            if (val < minVal || minVal === undefined) {
+                minVal = val;
+            }
+            if (val > maxVal || maxVal === undefined) {
+                maxVal = val;
+            }
+        }
+        return [minVal, maxVal];
     }
 }

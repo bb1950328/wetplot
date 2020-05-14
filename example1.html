@@ -11,7 +11,6 @@
     let wp;
     document.addEventListener("DOMContentLoaded", function (event) {
         wp = new Wetplot();
-        wp.initialize();
         let data = new WetplotData(["Time", "Temp"], [
             [1589436660, 3.43],
             [1589437260, 12.99],
@@ -32,6 +31,9 @@
             [1589446260, 3.12],
         ]);
         wp._addDataToDb("10min", data);
+        wp._data = data;
+        wp.addLine("Temp");
+        wp.initialize();
     });
 </script>
 </body>

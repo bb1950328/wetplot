@@ -34,7 +34,8 @@ class Wetplot {
         this._openDb();
     }
 
-    _openDb(successCallback=(db)=>{}) {
+    _openDb(successCallback = (db) => {
+    }) {
         let request = window.indexedDB.open(this._config["db_name"], 1);
         let time_intervals = this._config["intervals"];
         request.onerror = function (event) {
@@ -45,6 +46,7 @@ class Wetplot {
             successCallback(db);
         }
         request.onupgradeneeded = function (event) {
+            console.log("DB update needed");
             let db = event.target.result;
             time_intervals.forEach(interval => {
                 let objectStore = db.createObjectStore(interval, {keyPath: "Time"});
@@ -56,16 +58,45 @@ class Wetplot {
         this._openDb((db) => {
             let transaction = db.transaction([interval], "readwrite");
             let objectStore = transaction.objectStore(interval);
-            wetplotData.forEachObject(objectStore.add);
+
+            function addObj(obj) {
+                console.debug("Add " + JSON.stringify(obj));
+                objectStore.add(obj);
+            }
+
+            function updateObj(obj, previous) {
+                if (previous === undefined) {
+                    return addObj(obj);
+                }
+                console.debug("Update " + JSON.stringify(previous));
+                Object.assign(previous, obj);
+                objectStore.put(previous);
+            }
+
+            wetplotData.forEachObject(function (obj) {
+                let request = objectStore.get(obj["Time"]);
+                request.onsuccess = function (event) {
+                    updateObj(obj, request.result);
+                };
+                request.onerror = function (event) {
+                    addObj(obj);
+                };
+            });
+            transaction.onabort = function (event) {
+                console.error(event);
+            }
         });
     }
 
-    _getDataFromDb(interval, startTs, endTs) {
+    _getDataFromDb(interval, startTs, endTs, callback) {
         this._openDb((db) => {
             let transaction = db.transaction(interval);
             let objectStore = transaction.objectStore(interval);
-            // TODO SELECT * FROM objectStore WHERE startTs <= Time <= endTs
-        })
+            let request = objectStore.getAll(IDBKeyRange.bound(startTs, endTs));
+            request.onsuccess = function (event) {
+                callback(WetplotData.fromObjectArray(request.result));
+            }
+        });
     }
 
     config(key, value = undefined) {
@@ -217,8 +248,25 @@ class WetplotData {
         this.values.forEach(row => {
             for (let i = 0; i < this.heads.length; i++) {
                 obj[this.heads[i]] = row[i];
-                callbackFunction(obj);
             }
+            callbackFunction({...obj});  // these weird dots are to clone object
         });
+    }
+
+    static fromObjectArray(objArray=[]) {
+        let result = new WetplotData();
+        objArray.forEach(obj => {
+            let row = [];
+            Object.getOwnPropertyNames(obj).forEach(key => {
+                let colIndex = result.heads.indexOf(key);
+                if (colIndex === -1) {
+                    colIndex = result.heads.length;
+                    result.heads.push(key);
+                }
+                row[colIndex] = obj[key];
+            });
+            result.values.push(row);
+        });
+        return result;
     }
 }

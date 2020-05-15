@@ -4,7 +4,6 @@ const DEFAULT_LINE_CODE = "###default###";
 const WETPLOT_CSS = `
     .xAxisText {
         fill: #000000;
-        font-size: 10px;
     }
 
     .linePath {
@@ -15,12 +14,39 @@ const WETPLOT_CSS = `
         fill: none;
         stroke: #666;
     }
+    
+    #hoverCursor {
+        stroke: #000;
+    }
 `;
 
 const COLOR_PALETTES = [
-    ["#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff"],
-    ["#ff0000", "#ff8000", "#ffff00", "#80ff00", "#00ff00", "#00ff80", "#00ffff", "#0080ff", "#0000ff", "#8000ff", "#ff00ff", "#ff0080"],
-]
+    [
+        "#ff0000",
+        "#ffff00",
+        "#00ff00",
+        "#00ffff",
+        "#0000ff",
+        "#ff00ff"
+    ], [
+        "#ff0000",
+        "#ff8000",
+        "#ffff00",
+        "#80ff00",
+        "#00ff00",
+        "#00ff80",
+        "#00ffff",
+        "#0080ff",
+        "#0000ff",
+        "#8000ff",
+        "#ff00ff",
+        "#ff0080"
+    ],
+];
+
+function createSvgElement(tagName = "svg") {
+    return document.createElementNS("http://www.w3.org/2000/svg", tagName);
+}
 
 class Wetplot {
     _config = {
@@ -38,7 +64,7 @@ class Wetplot {
         db_name: "wetplot",
         intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
         allow_scrolling_to_far: false, // allow user to scroll farther left than time_offset or farther right than time_offset+time_length
-        y_axis_font_size_px: 16,
+        axis_font_size_px: 16,
     }
 
     _line_config = {
@@ -55,8 +81,10 @@ class Wetplot {
 
     _data = null;
 
+    _x_offset = 0;
+
     initialize() {
-        this._svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        this._svgElement = createSvgElement("svg");
         this._wrapperElement = document.getElementById(this._config["container_id"]);
         this._wrapperElement.appendChild(this._svgElement);
         //this._wrapperElement.style["width"] = this._config["width"] + "px";
@@ -77,6 +105,7 @@ class Wetplot {
         this._create_y_axis();
         this._draw_x_axis();
         this._draw_horizontal_grid();
+        this._createHoverCursor();
     }
 
     _openDb(successCallback = (db) => {
@@ -151,24 +180,27 @@ class Wetplot {
     }
 
     _draw_x_axis() {
-        let group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        let group = createSvgElement("g");
         group.setAttribute("id", "xAxisGroup");
         this._svgElement.appendChild(group);
 
-        let gridPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        let gridPath = createSvgElement("path");
         let gridD = "";
 
         let seconds_step = this._config["seconds_per_grid_line"];
         let seconds_start = this._config["time_offset"];
+        let fontSize = this._config["axis_font_size_px"];
         for (let secs = Math.round(seconds_start / seconds_step) * seconds_step; secs < seconds_start + this._config["time_lenght"]; secs += seconds_step) {
             let date = new Date(secs * 1000);//todo timezone issue?
             let x = Math.round(this._seconds_to_x_coords(secs));
             let dateForHuman = date.toLocaleDateString() + " " + date.toLocaleTimeString();
-            let txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            dateForHuman = dateForHuman.substring(0, dateForHuman.lastIndexOf(":")); // cut off seconds
+            let txt = createSvgElement("text");
             txt.innerHTML = dateForHuman;
             txt.setAttribute("x", 0);
-            txt.setAttribute("y", 0);
-            txt.setAttribute("transform", "rotate(90,0,0) translate(" + 10 + " " + -x + ")")
+            txt.setAttribute("y", fontSize / 4);
+            txt.setAttribute("transform", "rotate(90,0,0) translate(" + 10 + " " + -x + ")");
+            txt.style.fontSize = fontSize;
             txt.classList.add("xAxisText");
             group.appendChild(txt);
 
@@ -189,7 +221,7 @@ class Wetplot {
             gridD += "M 0 " + y + " H " + this._getXmax();
         }
 
-        let pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        let pathElement = createSvgElement("path");
         pathElement.setAttribute("id", "horizontalGrid");
         pathElement.setAttribute("d", gridD);
         pathElement.classList.add("grid");
@@ -225,7 +257,7 @@ class Wetplot {
 
         let pathElement = document.getElementById("path" + lineCode);
         if (pathElement === null) {
-            pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathElement = createSvgElement("path");
             this._svgElement.appendChild(pathElement);
             pathElement.style.stroke = config["color"];
             pathElement.classList.add("linePath");
@@ -234,12 +266,40 @@ class Wetplot {
     }
 
     _create_y_axis() {
-        this._yAxisElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        this._yAxisElement = createSvgElement("svg");
         this._yAxisElement.setAttribute("width", "0.01em");
         this._yAxisElement.setAttribute("height", this._config["height"]);
-        this._yAxisElement.style.backgroundColor = "#abcdef";
+        this._yAxisElement.style.backgroundColor = this._config["background_color"];
         this.getAllLineCodes().forEach(code => this._add_y_axis_for_line_if_needed(code));
         this._wrapperElement.appendChild(this._yAxisElement);
+    }
+
+    _createHoverCursor() {
+        let g = createSvgElement("g");
+        this._svgElement.appendChild(g);
+        g.setAttribute("id", "hoverCursor");
+        let line = createSvgElement("path");
+        g.appendChild(line);
+        line.setAttribute("d", "M 0 0 V " + this._config["height"]);
+
+        let catchelement = document.body;
+
+        catchelement.addEventListener("mousemove", (event) => {
+            let bbox = this._svgElement.getBoundingClientRect();
+            let m = 2;
+            let inside =
+                bbox.x+m < event.clientX &&
+                event.clientX < bbox.right-m &&
+                bbox.y+m < event.clientY &&
+                event.clientY < bbox.bottom-m;
+            if (inside) {
+                g.style.display = "inline";
+                g.setAttribute("transform", "translate(" + (event.clientX-bbox.x+this._x_offset) + " 0)");
+                // todo display time and values as tooltip
+            } else {
+                g.style.display = "none";
+            }
+        });
     }
 
     getAllLineCodes() {
@@ -249,23 +309,23 @@ class Wetplot {
     _add_y_axis_for_line_if_needed(code) {
         let id = "group" + code;
         if (document.getElementById(id) === null && this._yAxisElement) {
-            let fontSize = this._config["y_axis_font_size_px"];
+            let fontSize = this._config["axis_font_size_px"];
             let allCodes = this.getAllLineCodes();
             this._yAxisElement.setAttribute("width", allCodes.length * 3 * fontSize);
             let index = allCodes.indexOf(code);
 
-            let g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            let g = createSvgElement("g");
             g.setAttribute("id", id);
             g.setAttribute("fill", this._line_config[code]["color"]);
             //g.setAttribute("transform", "translate("+(index*100/allCodes.length)+"% 0)");
             this._yAxisElement.appendChild(g);
 
-            let unit = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            let unit = createSvgElement("text");
             g.appendChild(unit);
             unit.innerHTML = this._line_config[code]["unit"];
-            unit.style.fontSize = "1em";
+            unit.style.fontSize = fontSize + "px";
             unit.setAttribute("y", fontSize);
-            unit.setAttribute("x", (index * 3 + 1.5) * fontSize);
+            unit.setAttribute("x", (index * 3 + 0.5) * fontSize);
 
             let [minVal, maxVal] = [this._line_config[code]["min"], this._line_config[code]["max"]];
             let minValueStep = (fontSize * 1.2) / (this._config["height"] / (maxVal - minVal));
@@ -311,21 +371,22 @@ class Wetplot {
             while (yCoord > fontSize * 2) {
                 yLastCoord = yCoord;
                 console.log("val=" + yValue + "\tcoord=" + yCoord.toFixed(2) + "\tvalue_step=" + yValueStep);
-                let txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                let txt = createSvgElement("text");
                 txt.innerHTML = yValue.toFixed(yValueDigitsAfterComma);
-                txt.setAttribute("y", yCoord+fontSize*0.4);
-                txt.setAttribute("x", x+fontSize/3);
+                txt.setAttribute("y", yCoord + fontSize * 0.4);
+                txt.setAttribute("x", x + fontSize / 3);
+                txt.style.fontSize = fontSize;
                 g.appendChild(txt);
 
-                ladderPath += "M " + x + " " + yCoord + " h " + (fontSize/-3).toFixed(2) + " ";
+                ladderPath += "M " + x + " " + yCoord + " h " + (fontSize / -3).toFixed(2) + " ";
                 yValue += yValueStep;
                 yCoord = this._value_to_y_coord(code, yValue);
             }
             ladderPath += "M " + x + " " + yLastCoord + " V " + yFirstCoord;
 
-            let pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            let pathElement = createSvgElement("path");
             pathElement.setAttribute("d", ladderPath);
-            pathElement.setAttribute("id", "yLadder"+code);
+            pathElement.setAttribute("id", "yLadder" + code);
             pathElement.setAttribute("stroke", this._line_config[code]["color"]);
             g.appendChild(pathElement);
         }
@@ -384,6 +445,7 @@ class Wetplot {
             x1 = Math.min(x1, x1max);
         }
         let newValue = [x1, y1, x2, y2].join(" ");
+        this._x_offset = x1;
         this._svgElement.setAttribute("viewBox", newValue);
     }
 
@@ -396,14 +458,14 @@ class Wetplot {
         let _last_mouse_move_x;
         wrapperElement.onwheel = (event) => {
             event.preventDefault();
-            console.log(event.deltaX);
-            console.log(event.deltaY);
+            //console.log(event.deltaX);
+            //console.log(event.deltaY);
             this._moveViewBoxPixels(event.deltaX * 10);
             this._moveViewBoxPixels(event.deltaY * 10);
         }
         wrapperElement.onmousedown = (event) => {
             event.preventDefault();
-            console.log("mousedown");
+            //console.log("mousedown");
             _last_mouse_move_x = event.pageX;
 
             let onMouseMove = (event) => {

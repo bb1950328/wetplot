@@ -12,8 +12,10 @@
     document.addEventListener("DOMContentLoaded", function (event) {
         wp = new Wetplot();
         let array = [];
-        for (let i = new Date().valueOf()/1000; i < new Date().valueOf()/1000+60*60*24; i+=600) {
-            array.push([Math.round(i), Math.random()*30-10, Math.random()*5]);
+        let x = 1;
+        for (let i = new Date().valueOf()/1000-60*60*24; i < new Date().valueOf()/1000+60*60*24; i+=600) {
+            array.push([Math.round(i), Math.sin(x)*4+10, Math.random()*5]);
+            x+= 0.1;
         }
         let data = new WetplotData(["Time", "Temp", "Light"], array);
         wp._addDataToDb("10min", data);
@@ -21,6 +23,8 @@
         wp.addLine("Temp");
         wp.addLine("Light");
         wp.lineConfig("Light", "auto_min_max", true);
+        wp.lineConfig("Temp", "unit", "°C");
+        wp.lineConfig("Light", "unit", "Lux");
         wp.usePalette(0);
         wp.initialize();
     });

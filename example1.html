@@ -11,28 +11,17 @@
     let wp;
     document.addEventListener("DOMContentLoaded", function (event) {
         wp = new Wetplot();
-        let data = new WetplotData(["Time", "Temp"], [
-            [1589436660, 3.43],
-            [1589437260, 12.99],
-            [1589437860, 0.07],
-            [1589438460, 9.61],
-            [1589439060, 4.37],
-            [1589439660, 11.47],
-            [1589440260, 7.79],
-            [1589440860, 0.02],
-            [1589441460, 12.98],
-            [1589442060, 6.96],
-            [1589442660, 5.63],
-            [1589443260, 10.41],
-            [1589443860, 16.76],
-            [1589444460, 18.07],
-            [1589445060, 2.39],
-            [1589445660, 9.77],
-            [1589446260, 3.12],
-        ]);
+        let array = [];
+        for (let i = new Date().valueOf()/1000; i < new Date().valueOf()/1000+60*60*24; i+=600) {
+            array.push([Math.round(i), Math.random()*30-10, Math.random()*5]);
+        }
+        let data = new WetplotData(["Time", "Temp", "Light"], array);
         wp._addDataToDb("10min", data);
         wp._data = data;
         wp.addLine("Temp");
+        wp.addLine("Light");
+        wp.lineConfig("Light", "auto_min_max", true);
+        wp.usePalette(0);
         wp.initialize();
     });
 </script>

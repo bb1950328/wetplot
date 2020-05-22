@@ -14,17 +14,19 @@
         let array = [];
         let x = 1;
         for (let i = new Date().valueOf()/1000-60*60*24; i < new Date().valueOf()/1000+60*60*24; i+=600) {
-            array.push([Math.round(i), Math.sin(x)*4+10, Math.random()*5]);
+            array.push([Math.round(i), Math.sin(x)*4+10, Math.cos(x)]);
             x+= 0.1;
         }
         let data = new WetplotData(["Time", "Temp", "Light"], array);
         wp._addDataToDb("10min", data);
         wp._data = data;
         wp.addLine("Temp");
+        wp.lineConfig("Temp", "unit", "°C");
+
         wp.addLine("Light");
         wp.lineConfig("Light", "auto_min_max", true);
-        wp.lineConfig("Temp", "unit", "°C");
         wp.lineConfig("Light", "unit", "Lux");
+
         wp.usePalette(0);
         wp.initialize();
     });

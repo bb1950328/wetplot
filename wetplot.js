@@ -14,7 +14,7 @@ const WETPLOT_CSS = `
         fill: none;
         stroke: #666;
     }
-    
+
     #hoverCursor {
         stroke: #000;
     }
@@ -23,7 +23,7 @@ const WETPLOT_CSS = `
 const COLOR_PALETTES = [
     [
         "#ff0000",
-        "#ffff00",
+        //"#ffff00",
         "#00ff00",
         "#00ffff",
         "#0000ff",
@@ -31,7 +31,7 @@ const COLOR_PALETTES = [
     ], [
         "#ff0000",
         "#ff8000",
-        "#ffff00",
+        //"#ffff00",
         "#80ff00",
         "#00ff00",
         "#00ff80",
@@ -43,6 +43,28 @@ const COLOR_PALETTES = [
         "#ff0080"
     ],
 ];
+
+const TEXTS = {
+    "TIME": {
+        "en": "Time",
+        "de": "Zeit",
+        "fr": "Temps",
+    }
+}
+
+function getText(key) {
+    let userLanguage = "de"; // todo
+    let object = TEXTS[key];
+    if (object === undefined) {
+        return "###" + key + "###";
+    } else {
+        let txt = object[userLanguage];
+        if (txt === undefined) {
+            txt = object[Object.getOwnPropertyNames(object)[0]];
+        }
+        return txt;
+    }
+}
 
 function createSvgElement(tagName = "svg") {
     return document.createElementNS("http://www.w3.org/2000/svg", tagName);
@@ -285,21 +307,130 @@ class Wetplot {
         let catchelement = document.body;
 
         catchelement.addEventListener("mousemove", (event) => {
-            let bbox = this._svgElement.getBoundingClientRect();
-            let m = 2;
-            let inside =
-                bbox.x+m < event.clientX &&
-                event.clientX < bbox.right-m &&
-                bbox.y+m < event.clientY &&
-                event.clientY < bbox.bottom-m;
-            if (inside) {
-                g.style.display = "inline";
-                g.setAttribute("transform", "translate(" + (event.clientX-bbox.x+this._x_offset) + " 0)");
-                // todo display time and values as tooltip
-            } else {
-                g.style.display = "none";
+            this._cursorMoved(event);
+        });
+    }
+
+    _cursorMoved(event) {
+        let g = document.getElementById("hoverCursor");
+        let bbox = this._svgElement.getBoundingClientRect();
+        let m = 2;
+        let inside =
+            bbox.x + m < event.clientX &&
+            event.clientX < bbox.right - m &&
+            bbox.y + m < event.clientY &&
+            event.clientY < bbox.bottom - m;
+        if (inside) {
+            g.style.display = "inline";
+            let x_on_viewbox = event.clientX - bbox.x;
+            let x_on_svg = x_on_viewbox + this._x_offset;
+            g.setAttribute("transform", "translate(" + x_on_svg + " 0)");
+            this._show_values_popup(x_on_svg, x_on_viewbox);
+        } else {
+            g.style.display = "none";
+            this._hide_values_popup();
+        }
+    }
+
+    _nearestTwoDataRows(timestamp) {
+        let a = null;
+        let b = null;
+        let time_idx = this._data.heads.indexOf("Time");
+        for (let i = 0; i < this._data.values.length; i++) {
+            a = b;
+            b = this._data.values[i];
+            if (b[time_idx] > timestamp) {
+                break;
+            }
+        }
+        return [a, b];
+    }
+
+    _show_values_popup(x_svg, x_viewbox) {
+        let cursorTimestampSeconds = this._x_coords_to_seconds(x_svg);
+        let valuesPopupG = document.getElementById("valuesPopupG");
+        let timeText = document.getElementById("valuesPopupTime");
+        let bgPath = document.getElementById("valuesPopupBg");
+        let scale = x => this._config["axis_font_size_px"] * x
+
+        if (valuesPopupG == null) {
+            valuesPopupG = createSvgElement("g");
+            valuesPopupG.setAttribute("id", "valuesPopupG");
+            this._svgElement.appendChild(valuesPopupG);
+
+            bgPath = createSvgElement("path");
+            valuesPopupG.appendChild(bgPath);
+            bgPath.style.fill = "#ffffff";
+            bgPath.style.fillOpacity = 0.75;
+            bgPath.setAttribute("id", "valuesPopupBg");
+
+
+            timeText = createSvgElement("text");
+            timeText.setAttribute("id", "valuesPopupTime");
+            valuesPopupG.appendChild(timeText);
+        } else {
+            valuesPopupG.style.display = "inline";
+        }
+
+        let date = new Date(cursorTimestampSeconds * 1000);
+        let localeDateStr = date.toLocaleString();
+        localeDateStr = localeDateStr.substring(0, localeDateStr.lastIndexOf(":"));
+        let texts_x1 = scale(0.25);
+        let texts_y = scale(1);
+
+        let estimatedBgHeight = scale(this.getAllLineCodes().length + 1.25);
+        let abs_y1 = (this._config["height"] + estimatedBgHeight) / 2;
+
+        if (x_viewbox / this._config["width"] > 0.5) {
+            valuesPopupG.setAttribute("transform", "translate(" + (x_svg - scale(11)) + ", " + abs_y1 + ")");
+            bgPath.setAttribute("transform", "");
+        } else {
+            valuesPopupG.setAttribute("transform", "translate(" + x_svg + ", " + abs_y1 + ")");
+            bgPath.setAttribute("transform", "rotate(180) translate(" + scale(-11) + " " + (-1*estimatedBgHeight) + ")");
+            texts_x1 += scale(1);
+        }
+        timeText.innerHTML = getText("TIME") + ": " + localeDateStr;
+        timeText.setAttribute("x", texts_x1);
+        timeText.setAttribute("y", texts_y);
+
+        this.getAllLineCodes().forEach(lineCode => {
+            let id = "valuesPopup" + lineCode;
+            let txt = document.getElementById(id);
+            if (txt == null) {
+                txt = createSvgElement("text");
+                txt.classList.add("valueText");
+                txt.setAttribute("id", id);
+                valuesPopupG.appendChild(txt);
             }
         });
+        let values = this._seconds_to_values(cursorTimestampSeconds);
+        let valueElements = valuesPopupG.getElementsByClassName("valueText");
+        for (let i = 0; i < valueElements.length; i++) {
+            let txt = valueElements.item(i);
+            let lineCode = txt.id.substring("valuesPopup".length);
+            texts_y += scale(1);
+            txt.setAttribute("x", texts_x1);
+            txt.setAttribute("y", texts_y);
+            txt.innerHTML = this._line_config[lineCode]["name"] + ": " + (Math.round(values[lineCode] * 100) / 100) + " " + this._line_config[lineCode]["unit"];
+            txt.style.fill = this._line_config[lineCode]["color"];
+        }
+        let bgHeight = texts_y + scale(0.25);
+        bgPath.setAttribute("d", "M " + 0 + " 0" +
+            " H " + scale(10) + // 1                        +-----1-----+
+            " V " + bgHeight * 0.4 + // 2                        |           | 2
+            " L " + scale(11) + " " + 0.5 * bgHeight + // 3   |            \ 3
+            " L " + scale(10) + " " + 0.6 * bgHeight + // 4   7            / 4
+            " V " + bgHeight + // 5                            |           | 5
+            " H 0" +// 6                                       +-----6-----+
+            " V 0" // 7
+        );
+    }
+
+    _hide_values_popup() {
+        let valuesPopupG = document.getElementById("valuesPopupG");
+        if (valuesPopupG !== null) {
+            valuesPopupG.style.display = "none";
+        }
     }
 
     getAllLineCodes() {
@@ -404,6 +535,7 @@ class Wetplot {
             throw Error("invalid lineId");
         }
         this._line_config[lineId] = {...this._line_config[DEFAULT_LINE_CODE]};
+        this._line_config[lineId]["name"] = lineId;
         this._add_y_axis_for_line_if_needed(lineId);
     }
 
@@ -462,6 +594,7 @@ class Wetplot {
             //console.log(event.deltaY);
             this._moveViewBoxPixels(event.deltaX * 10);
             this._moveViewBoxPixels(event.deltaY * 10);
+            this._cursorMoved(event);
         }
         wrapperElement.onmousedown = (event) => {
             event.preventDefault();
@@ -507,6 +640,22 @@ class Wetplot {
         let [min, max] = [this._line_config[lineCode]["min"], this._line_config[lineCode]["max"]];
         let span = max - min;
         return (this._config["height"] - y_coord) / this._config["height"] * span + min;
+    }
+
+    _seconds_to_values(timestamp) {
+        let [a, b] = this._nearestTwoDataRows(timestamp);
+        let result = {};
+        let time_idx = this._data.heads.indexOf("Time");
+        let aTs = a[time_idx];
+        let bTs = b[time_idx];
+        let exactPos = (timestamp - aTs) / (bTs - aTs);
+        this.getAllLineCodes().forEach(lineCode => {
+            let idx = this._data.heads.indexOf(lineCode);
+            let aVal = a[idx];
+            let bVal = b[idx];
+            result[lineCode] = (aVal) + (bVal - aVal) * exactPos;
+        });
+        return result
     }
 }
 

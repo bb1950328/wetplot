@@ -92,7 +92,7 @@ class Wetplot {
 
     _line_config = {
         "###default###": {
-            "type": "line",
+            "type": "line",//"ybar" possible too
             "color": "#000000",
             "name": "?",
             "unit": "1",
@@ -265,17 +265,68 @@ class Wetplot {
             config["min"] = min - padding;
             config["max"] = max + padding;
         }
-        let path = "M";
-        let first = true;
-        for (let i = 0; i < this._data.values.length; i++) {
-            let x = this._seconds_to_x_coords(this._data.values[i][timeCol]);
-            let y = this._value_to_y_coord(lineCode, this._data.values[i][colNum]);
-            if (first) {
-                first = false;
-            } else {
-                path += " L";
+        let path;
+        let fill = false;
+        if (config["type"] === "line") {
+            path = "M";
+            let first = true;
+            for (let i = 0; i < this._data.values.length; i++) {
+                let x = this._seconds_to_x_coords(this._data.values[i][timeCol]);
+                let y = this._value_to_y_coord(lineCode, this._data.values[i][colNum]);
+                if (first) {
+                    first = false;
+                } else {
+                    path += " L";
+                }
+                path += (" " + Math.round(x) + " " + Math.round(y));
             }
-            path += (" " + Math.round(x) + " " + Math.round(y));
+        } else if (config["type"] === "ybar") {
+            fill = true;
+            let changingProperty = timestampSec => (new Date(timestampSec * 1000).getHours()); // todo make customizeable
+            let lastPropertyValue = undefined;
+            let aTs = this._config["time_offset"];
+            let lastTimestamp = aTs;
+            let sum = 0;
+            let sumMax = 0;
+            let data = [];
+            for (let i = 0; i < this._data.values.length; i++) {
+                let ts = this._data.values[i][timeCol];
+                let nowPropertyValue = changingProperty(ts);
+                if (lastPropertyValue !== undefined && lastPropertyValue !== nowPropertyValue) {
+                    data.push([aTs, lastTimestamp, sum]);
+                    aTs = ts;
+                    sumMax = Math.max(sum, sumMax);
+                    sum = 0;
+                }
+                sum += this._data.values[i][colNum];
+                lastPropertyValue = nowPropertyValue;
+                lastTimestamp = ts;
+            }
+
+            if (config["auto_min_max"]) {
+                config["min"] = 0;
+                config["max"] = sumMax * 1.01;
+            }
+
+            let y_zero = this._value_to_y_coord(lineCode, 0);
+            path = "M 0 " + y_zero;
+            for (let i = 0; i < data.length; i++) {
+                aTs = data[i][0];
+                let bTs = data[i][1];
+                sum = data[i][2];
+
+                let y = this._value_to_y_coord(lineCode, sum);
+                let x1 = this._seconds_to_x_coords(aTs) + 1;//todo make something better than +1
+                let x2 = this._seconds_to_x_coords(bTs) - 1;
+
+                path += " H " + x1;
+                path += " V " + y;
+                path += " H " + x2;
+                path += " V " + y_zero;
+            }
+            path += " Z";
+        } else {
+            console.error("Unknown type for line " + lineCode + ": \"" + config["type"] + "\"");
         }
         console.log(path);
 
@@ -285,6 +336,10 @@ class Wetplot {
             this._svgElement.appendChild(pathElement);
             pathElement.style.stroke = config["color"];
             pathElement.classList.add("linePath");
+            if (fill) {
+                pathElement.style.fill = config["color"];
+                pathElement.style.fillOpacity = 0.4;
+            }
         }
         pathElement.setAttribute("d", path);
     }
@@ -420,12 +475,12 @@ class Wetplot {
         }
         let bgHeight = texts_y + scale(0.25);
         bgPath.setAttribute("d", "M " + 0 + " 0" +
-            " H " + scale(10) + // 1                        +-----1-----+
+            " H " + scale(10) + // 1                          +-----1-----+
             " V " + bgHeight * 0.4 + // 2                        |           | 2
             " L " + scale(11) + " " + 0.5 * bgHeight + // 3   |            \ 3
             " L " + scale(10) + " " + 0.6 * bgHeight + // 4   7            / 4
-            " V " + bgHeight + // 5                            |           | 5
-            " H 0" +// 6                                       +-----6-----+
+            " V " + bgHeight + // 5                              |           | 5
+            " H 0" +// 6                                         +-----6-----+
             " V 0" // 7
         );
     }

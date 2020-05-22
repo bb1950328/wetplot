@@ -77,6 +77,7 @@ class Wetplot {
         width: 1000,
         height: 500,
         background_color: "#c7c1a7",
+        hover_box_background_color: "#fafafa",
         time_offset: Math.round(((+new Date()) - (1000 * 60 * 60 * 24)) / 1000),//in seconds, default is one day before
         time_lenght: 60 * 60 * 24 * 2, // in seconds
         seconds_per_pixel: 60,
@@ -86,7 +87,7 @@ class Wetplot {
         db_name: "wetplot",
         intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
         allow_scrolling_to_far: false, // allow user to scroll farther left than time_offset or farther right than time_offset+time_length
-        axis_font_size_px: 16,
+        font_size_px: 16,
     }
 
     _line_config = {
@@ -211,7 +212,7 @@ class Wetplot {
 
         let seconds_step = this._config["seconds_per_grid_line"];
         let seconds_start = this._config["time_offset"];
-        let fontSize = this._config["axis_font_size_px"];
+        let fontSize = this._config["font_size_px"];
         for (let secs = Math.round(seconds_start / seconds_step) * seconds_step; secs < seconds_start + this._config["time_lenght"]; secs += seconds_step) {
             let date = new Date(secs * 1000);//todo timezone issue?
             let x = Math.round(this._seconds_to_x_coords(secs));
@@ -222,7 +223,7 @@ class Wetplot {
             txt.setAttribute("x", 0);
             txt.setAttribute("y", fontSize / 4);
             txt.setAttribute("transform", "rotate(90,0,0) translate(" + 10 + " " + -x + ")");
-            txt.style.fontSize = fontSize;
+            txt.style.fontSize = fontSize + "px";
             txt.classList.add("xAxisText");
             group.appendChild(txt);
 
@@ -260,8 +261,9 @@ class Wetplot {
         const config = this._line_config[lineCode];
         if (config["auto_min_max"]) {
             let [min, max] = this._data.getMinMaxForColumn(colNum);
-            config["min"] = min;
-            config["max"] = max;
+            let padding = (max - min) / 100;
+            config["min"] = min - padding;
+            config["max"] = max + padding;
         }
         let path = "M";
         let first = true;
@@ -351,7 +353,7 @@ class Wetplot {
         let valuesPopupG = document.getElementById("valuesPopupG");
         let timeText = document.getElementById("valuesPopupTime");
         let bgPath = document.getElementById("valuesPopupBg");
-        let scale = x => this._config["axis_font_size_px"] * x
+        let scale = x => this._config["font_size_px"] * x
 
         if (valuesPopupG == null) {
             valuesPopupG = createSvgElement("g");
@@ -360,13 +362,14 @@ class Wetplot {
 
             bgPath = createSvgElement("path");
             valuesPopupG.appendChild(bgPath);
-            bgPath.style.fill = "#ffffff";
+            bgPath.style.fill = this._config["hover_box_background_color"];
             bgPath.style.fillOpacity = 0.75;
             bgPath.setAttribute("id", "valuesPopupBg");
 
 
             timeText = createSvgElement("text");
             timeText.setAttribute("id", "valuesPopupTime");
+            timeText.style.fontSize = this._config["font_size_px"] + "px";
             valuesPopupG.appendChild(timeText);
         } else {
             valuesPopupG.style.display = "inline";
@@ -386,7 +389,7 @@ class Wetplot {
             bgPath.setAttribute("transform", "");
         } else {
             valuesPopupG.setAttribute("transform", "translate(" + x_svg + ", " + abs_y1 + ")");
-            bgPath.setAttribute("transform", "rotate(180) translate(" + scale(-11) + " " + (-1*estimatedBgHeight) + ")");
+            bgPath.setAttribute("transform", "rotate(180) translate(" + scale(-11) + " " + (-1 * estimatedBgHeight) + ")");
             texts_x1 += scale(1);
         }
         timeText.innerHTML = getText("TIME") + ": " + localeDateStr;
@@ -398,6 +401,7 @@ class Wetplot {
             let txt = document.getElementById(id);
             if (txt == null) {
                 txt = createSvgElement("text");
+                txt.style.fontSize = this._config["font_size_px"] + "px";
                 txt.classList.add("valueText");
                 txt.setAttribute("id", id);
                 valuesPopupG.appendChild(txt);
@@ -440,7 +444,7 @@ class Wetplot {
     _add_y_axis_for_line_if_needed(code) {
         let id = "group" + code;
         if (document.getElementById(id) === null && this._yAxisElement) {
-            let fontSize = this._config["axis_font_size_px"];
+            let fontSize = this._config["font_size_px"];
             let allCodes = this.getAllLineCodes();
             this._yAxisElement.setAttribute("width", allCodes.length * 3 * fontSize);
             let index = allCodes.indexOf(code);
@@ -491,22 +495,22 @@ class Wetplot {
             let yMaxCoord = this._config["height"] - fontSize;
             let yValue = Math.floor(minVal);
             while (this._value_to_y_coord(code, yValue) > yMaxCoord) {
-                console.log(yValue);
+                //console.log(yValue);
                 yValue += yValueStep;
             }
             let yCoord = this._value_to_y_coord(code, yValue);
             let ladderPath = ""
             let yFirstCoord = yCoord;
             let yLastCoord;
-            let x = (index + 0.3) * 3 * fontSize;
+            let x = (index + 0.15) * 3 * fontSize;
             while (yCoord > fontSize * 2) {
                 yLastCoord = yCoord;
-                console.log("val=" + yValue + "\tcoord=" + yCoord.toFixed(2) + "\tvalue_step=" + yValueStep);
+                //console.log("val=" + yValue + "\tcoord=" + yCoord.toFixed(2) + "\tvalue_step=" + yValueStep);
                 let txt = createSvgElement("text");
                 txt.innerHTML = yValue.toFixed(yValueDigitsAfterComma);
                 txt.setAttribute("y", yCoord + fontSize * 0.4);
                 txt.setAttribute("x", x + fontSize / 3);
-                txt.style.fontSize = fontSize;
+                txt.style.fontSize = fontSize + "px";
                 g.appendChild(txt);
 
                 ladderPath += "M " + x + " " + yCoord + " h " + (fontSize / -3).toFixed(2) + " ";

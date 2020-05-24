@@ -53,16 +53,27 @@ const TEXTS = {
 }
 
 function getText(key) {
-    let userLanguage = "de"; // todo
     let object = TEXTS[key];
     if (object === undefined) {
         return "###" + key + "###";
     } else {
-        let txt = object[userLanguage];
-        if (txt === undefined) {
-            txt = object[Object.getOwnPropertyNames(object)[0]];
+        let availableLanguages = Object.getOwnPropertyNames(object);
+        let lang;
+        let found = false;
+        for (let i = 0; i < window.navigator.languages.length; i++){
+            lang = window.navigator.languages[i];
+            if (lang.startsWith("en")) {
+                lang = "en";
+            }
+            if (lang in availableLanguages) {
+                found = true;
+                break;
+            }
         }
-        return txt;
+        if (!found) {
+            lang = availableLanguages[0];
+        }
+        return object[lang];
     }
 }
 
@@ -214,7 +225,7 @@ class Wetplot {
         let seconds_start = this._config["time_offset"];
         let fontSize = this._config["font_size_px"];
         for (let secs = Math.round(seconds_start / seconds_step) * seconds_step; secs < seconds_start + this._config["time_lenght"]; secs += seconds_step) {
-            let date = new Date(secs * 1000);//todo timezone issue?
+            let date = new Date(secs * 1000);
             let x = Math.round(this._seconds_to_x_coords(secs));
             let dateForHuman = date.toLocaleDateString() + " " + date.toLocaleTimeString();
             dateForHuman = dateForHuman.substring(0, dateForHuman.lastIndexOf(":")); // cut off seconds

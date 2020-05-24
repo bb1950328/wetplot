@@ -115,6 +115,7 @@ class Wetplot {
         "###default###": {
             "type": "line",//"ybar" possible too
             "color": "#000000",
+            "line_width": 2,
             "name": "?",
             "unit": "1",
             "auto_min_max": false,
@@ -358,6 +359,7 @@ class Wetplot {
             pathElement = createSvgElement("path");
             this._svgElement.appendChild(pathElement);
             pathElement.style.stroke = config["color"];
+            pathElement.style.strokeWidth = config["line_width"];
             pathElement.classList.add("linePath");
             if (fill) {
                 pathElement.style.fill = config["color"];
@@ -453,27 +455,6 @@ class Wetplot {
             valuesPopupG.style.display = "inline";
         }
 
-        let date = new Date(cursorTimestampSeconds * 1000);
-        let localeDateStr = date.toLocaleString();
-        localeDateStr = localeDateStr.substring(0, localeDateStr.lastIndexOf(":"));
-        let texts_x1 = scale(0.25);
-        let texts_y = scale(1);
-
-        let estimatedBgHeight = scale(this.getAllLineCodes().length + 1.25);
-        let abs_y1 = (this._config["height"] + estimatedBgHeight) / 2;
-
-        if (x_viewbox / this._config["width"] > 0.5) {
-            valuesPopupG.setAttribute("transform", "translate(" + (x_svg - scale(11)) + ", " + abs_y1 + ")");
-            bgPath.setAttribute("transform", "");
-        } else {
-            valuesPopupG.setAttribute("transform", "translate(" + x_svg + ", " + abs_y1 + ")");
-            bgPath.setAttribute("transform", "rotate(180) translate(" + scale(-11) + " " + (-1 * estimatedBgHeight) + ")");
-            texts_x1 += scale(1);
-        }
-        timeText.innerHTML = getText("TIME") + ": " + localeDateStr;
-        timeText.setAttribute("x", texts_x1);
-        timeText.setAttribute("y", texts_y);
-
         this.getAllLineCodes().forEach(lineCode => {
             let id = "valuesPopup" + lineCode;
             let txt = document.getElementById(id);
@@ -485,25 +466,60 @@ class Wetplot {
                 valuesPopupG.appendChild(txt);
             }
         });
+
+        let texts_x1 = scale(0.25);
+        let texts_y = scale(1);
+
+        let date = new Date(cursorTimestampSeconds * 1000);
+        let localeDateStr = date.toLocaleString();
+        localeDateStr = localeDateStr.substring(0, localeDateStr.lastIndexOf(":"));
+        timeText.innerHTML = getText("TIME") + ": " + localeDateStr;
+        timeText.setAttribute("y", texts_y);
+        let maxTxtLength = timeText.innerHTML.length;
+
         let values = this._seconds_to_values(cursorTimestampSeconds);
         let valueElements = valuesPopupG.getElementsByClassName("valueText");
         for (let i = 0; i < valueElements.length; i++) {
             let txt = valueElements.item(i);
             let lineCode = txt.id.substring("valuesPopup".length);
-            texts_y += scale(1);
-            txt.setAttribute("x", texts_x1);
-            txt.setAttribute("y", texts_y);
-            txt.innerHTML = this._line_config[lineCode]["name"] + ": " + (Math.round(values[lineCode] * 100) / 100) + " " + this._line_config[lineCode]["unit"];
+            let text = this._line_config[lineCode]["name"] + ": "
+                + (Math.round(values[lineCode] * 100) / 100) + " "
+                + this._line_config[lineCode]["unit"];
+            txt.innerHTML = text;
+            maxTxtLength = Math.max(maxTxtLength, text.length);
             txt.style.fill = this._line_config[lineCode]["color"];
+
+            texts_y += scale(1);
+            txt.setAttribute("y", texts_y);
         }
+        let bgWidth = Math.ceil(maxTxtLength / 3.8) * 2;
         let bgHeight = texts_y + scale(0.25);
+
+        let estimatedBgHeight = scale(this.getAllLineCodes().length + 1.25);
+        let abs_y1 = (this._config["height"] + estimatedBgHeight) / 2;
+
+        if (x_viewbox / this._config["width"] > 0.5) {
+            valuesPopupG.setAttribute("transform", "translate(" + (x_svg - scale(bgWidth + 1)) + ", " + abs_y1 + ")");
+            bgPath.setAttribute("transform", "");
+        } else {
+            valuesPopupG.setAttribute("transform", "translate(" + x_svg + ", " + abs_y1 + ")");
+            bgPath.setAttribute("transform", "rotate(180) translate(" + scale(-(bgWidth + 1)) + " " + (-1 * estimatedBgHeight) + ")");
+            texts_x1 += scale(1);
+        }
+
+        timeText.setAttribute("x", texts_x1);
+        for (let i = 0; i < valueElements.length; i++) {
+            let txt = valueElements.item(i);
+            txt.setAttribute("x", texts_x1);
+        }
+
         bgPath.setAttribute("d", "M " + 0 + " 0" +
-            " H " + scale(10) + // 1                          +-----1-----+
-            " V " + bgHeight * 0.4 + // 2                        |           | 2
-            " L " + scale(11) + " " + 0.5 * bgHeight + // 3   |            \ 3
-            " L " + scale(10) + " " + 0.6 * bgHeight + // 4   7            / 4
-            " V " + bgHeight + // 5                              |           | 5
-            " H 0" +// 6                                         +-----6-----+
+            " H " + scale(bgWidth) + // 1                               +-----1-----+
+            " V " + bgHeight * 0.4 + // 2                               |           | 2
+            " L " + scale(bgWidth + 1) + " " + 0.5 * bgHeight + // 3   |            \ 3
+            " L " + scale(bgWidth) + " " + 0.6 * bgHeight + // 4        7            / 4
+            " V " + bgHeight + // 5                                     |           | 5
+            " H 0" +// 6                                                +-----6-----+
             " V 0" // 7
         );
     }
@@ -577,7 +593,7 @@ class Wetplot {
             let allCodes = this.getAllLineCodes();
             this._yAxisElement.setAttribute("width", this._count_units() * Y_AXIS_WIDTH * fontSize);
 
-            let index = this._created_y_axes.length-1;
+            let index = this._created_y_axes.length - 1;
 
             console.log("creating y axis for unit " + unit + ";" + index);
             let g = createSvgElement("g");

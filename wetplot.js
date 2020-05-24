@@ -60,7 +60,7 @@ function getText(key) {
         let availableLanguages = Object.getOwnPropertyNames(object);
         let lang;
         let found = false;
-        for (let i = 0; i < window.navigator.languages.length; i++){
+        for (let i = 0; i < window.navigator.languages.length; i++) {
             lang = window.navigator.languages[i];
             if (lang.startsWith("en")) {
                 lang = "en";
@@ -79,6 +79,16 @@ function getText(key) {
 
 function createSvgElement(tagName = "svg") {
     return document.createElementNS("http://www.w3.org/2000/svg", tagName);
+}
+
+function _split_to_digits(value) {
+    let digits = [];
+    while (value) {
+        digits.push(value % 10);
+        value = Math.floor(value / 10);
+    }
+    digits.reverse();
+    return digits;
 }
 
 class Wetplot {
@@ -116,6 +126,8 @@ class Wetplot {
     _data = null;
 
     _x_offset = 0;
+
+    _created_y_axes = [];
 
     initialize() {
         this._svgElement = createSvgElement("svg");
@@ -507,28 +519,82 @@ class Wetplot {
         return Object.getOwnPropertyNames(this._line_config).filter(el => el !== DEFAULT_LINE_CODE);
     }
 
+    numberToDisplayText(value, digitsAfterComma, maximum = undefined) {
+        if (maximum === undefined) {
+            maximum = value;
+        }
+        if (maximum <= 2000) {
+            return value.toFixed(digitsAfterComma);
+        }
+        let all_suffixes = ["", "k", "m", "g", "t"];
+        let digits = _split_to_digits(value);
+        let suffix = "";
+        while (digits.length + (suffix ? 1 : 0) > 4) {
+            suffix = all_suffixes[all_suffixes.indexOf(suffix) + 1];
+            let rest = digits.splice(digits.length - 3, 3);
+            if (rest[0] >= 5) {
+                digits = _split_to_digits(Number.parseInt(digits.join("")) + 1);
+            }
+        }
+        return digits.join("") + suffix;
+    }
+
+    _get_min_max_for_unit(unit) {
+        let [minVal, maxVal] = [undefined, undefined];
+        this.getAllLineCodes().forEach(c => {
+            if (this._line_config[c]["unit"] === unit) {
+                let [minC, maxC] = [this._line_config[c]["min"], this._line_config[c]["max"]];
+                if (minVal === undefined) {
+                    minVal = minC;
+                    maxVal = maxC;
+                } else {
+                    minVal = Math.min(minC, minVal);
+                    maxVal = Math.max(maxC, maxVal);
+                }
+            }
+        });
+        return [minVal, maxVal];
+    }
+
+    _count_units() {
+        let units = [];
+        this.getAllLineCodes().forEach(c => {
+            let u = this._line_config[c]["unit"];
+            if (units.indexOf(u) === -1) {
+                units.push(u);
+            }
+        });
+        return units.length;
+    }
+
     _add_y_axis_for_line_if_needed(code) {
-        let id = "group" + code;
-        if (document.getElementById(id) === null && this._yAxisElement) {
+        const Y_AXIS_WIDTH = 4;
+        let unit = this._line_config[code]["unit"];
+        let id = "group" + this._unit_to_id(unit);
+        if (this._created_y_axes.indexOf(id) === -1 && this._yAxisElement) {
+            this._created_y_axes.push(id);
             let fontSize = this._config["font_size_px"];
             let allCodes = this.getAllLineCodes();
-            this._yAxisElement.setAttribute("width", allCodes.length * 3 * fontSize);
-            let index = allCodes.indexOf(code);
+            this._yAxisElement.setAttribute("width", this._count_units() * Y_AXIS_WIDTH * fontSize);
 
+            let index = this._created_y_axes.length-1;
+
+            console.log("creating y axis for unit " + unit + ";" + index);
             let g = createSvgElement("g");
             g.setAttribute("id", id);
             g.setAttribute("fill", this._line_config[code]["color"]);
+
             //g.setAttribute("transform", "translate("+(index*100/allCodes.length)+"% 0)");
             this._yAxisElement.appendChild(g);
+            let unitElement = createSvgElement("text");
+            g.appendChild(unitElement);
+            unitElement.innerHTML = unit;
+            unitElement.style.fontSize = fontSize + "px";
+            unitElement.setAttribute("y", fontSize);
+            unitElement.setAttribute("x", (index * Y_AXIS_WIDTH + 0.5) * fontSize);
 
-            let unit = createSvgElement("text");
-            g.appendChild(unit);
-            unit.innerHTML = this._line_config[code]["unit"];
-            unit.style.fontSize = fontSize + "px";
-            unit.setAttribute("y", fontSize);
-            unit.setAttribute("x", (index * 3 + 0.5) * fontSize);
+            let [minVal, maxVal] = this._get_min_max_for_unit(unit);
 
-            let [minVal, maxVal] = [this._line_config[code]["min"], this._line_config[code]["max"]];
             let minValueStep = (fontSize * 1.2) / (this._config["height"] / (maxVal - minVal));
             let yValueDigitsAfterComma = 0;
             let yValueStep;
@@ -568,12 +634,12 @@ class Wetplot {
             let ladderPath = ""
             let yFirstCoord = yCoord;
             let yLastCoord;
-            let x = (index + 0.15) * 3 * fontSize;
+            let x = (index + 0.15) * Y_AXIS_WIDTH * fontSize;
             while (yCoord > fontSize * 2) {
                 yLastCoord = yCoord;
                 //console.log("val=" + yValue + "\tcoord=" + yCoord.toFixed(2) + "\tvalue_step=" + yValueStep);
                 let txt = createSvgElement("text");
-                txt.innerHTML = yValue.toFixed(yValueDigitsAfterComma);
+                txt.innerHTML = this.numberToDisplayText(yValue, yValueDigitsAfterComma);
                 txt.setAttribute("y", yCoord + fontSize * 0.4);
                 txt.setAttribute("x", x + fontSize / 3);
                 txt.style.fontSize = fontSize + "px";
@@ -591,6 +657,14 @@ class Wetplot {
             pathElement.setAttribute("stroke", this._line_config[code]["color"]);
             g.appendChild(pathElement);
         }
+    }
+
+    _unit_to_id(unit) {
+        let id = encodeURI(unit.replace("°", "deg").replace("%", "percent"));
+        while (id.indexOf("%") !== -1) {
+            id = id.replace("%", "");
+        }
+        return id;
     }
 
     config(key, value = undefined) {
@@ -701,13 +775,13 @@ class Wetplot {
     }
 
     _value_to_y_coord(lineCode, value) {
-        let [min, max] = [this._line_config[lineCode]["min"], this._line_config[lineCode]["max"]];
+        let [min, max] = this._get_min_max_for_unit(this._line_config[lineCode]["unit"]);
         let span = max - min;
         return this._config["height"] - this._config["height"] * ((value - min) / span)
     }
 
     _y_coord_to_value(lineCode, y_coord) {
-        let [min, max] = [this._line_config[lineCode]["min"], this._line_config[lineCode]["max"]];
+        let [min, max] = this._get_min_max_for_unit(this._line_config[lineCode]["unit"]);
         let span = max - min;
         return (this._config["height"] - y_coord) / this._config["height"] * span + min;
     }

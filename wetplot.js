@@ -492,7 +492,7 @@ class Wetplot {
             texts_y += scale(1);
             txt.setAttribute("y", texts_y);
         }
-        let bgWidth = Math.ceil(maxTxtLength / 3.8) * 2;
+        let bgWidth = Math.ceil(maxTxtLength / 4.5) * 2;
         let bgHeight = texts_y + scale(0.25);
 
         let estimatedBgHeight = scale(this.getAllLineCodes().length + 1.25);

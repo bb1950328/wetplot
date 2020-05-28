@@ -20,7 +20,7 @@ jobs:
     - name: Install closure compiler
       run: npm install --save google-closure-compiler
     - name: Compile
-      run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js --compilation_level ADVANCED_OPTIMIZATIONS
+      run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js
     - name: Delete node_modules
       run: rm -rf node_modules
     - name: Auto committing minified files

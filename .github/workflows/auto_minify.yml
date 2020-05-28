@@ -28,7 +28,7 @@ jobs:
     - name: Install uglifyJS
       run: npm install uglify-es -g
     - name: Uglify
-      run: uglifyjs wetplot.js -o wetplot.min.js
+      run: uglifyjs wetplot.js -o wetplot.min.js --compress --mangle
 
     # Auto commits minified files to the repository
     # Ignore it if you don't want to commit the files to the repository 

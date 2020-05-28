@@ -22,8 +22,8 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so auto-minify job can access it
     - uses: actions/checkout@v2
 
-    - name: Auto Minify
-      uses: nizarmah/auto-minify@master
+    - name: Minify
+      run: wget --post-data="input=`cat wetplot.js`" --output-document=wetplot.min.js https://javascript-minifier.com/raw
 
     # Auto commits minified files to the repository
     # Ignore it if you don't want to commit the files to the repository 

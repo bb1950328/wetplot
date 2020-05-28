@@ -21,9 +21,14 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so auto-minify job can access it
     - uses: actions/checkout@v2
-
-    - name: Minify
-      run: wget --post-data="input=`cat wetplot.js`" --output-document=wetplot.min.js https://javascript-minifier.com/raw
+    - name: Use Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: '12.x'
+    - name: Install uglifyJS
+      run: npm install uglify-js -g
+    - name: Uglify
+      run: uglifyjs wetplot.js -o wetplot.min.js
 
     # Auto commits minified files to the repository
     # Ignore it if you don't want to commit the files to the repository 

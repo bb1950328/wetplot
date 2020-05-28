@@ -30,7 +30,7 @@ jobs:
     - name: Install closure compiler
       run: npm install --save google-closure-compiler
     - name: Compile
-      run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js
+      run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js --compilation_level WHITESPACE_ONLY
 
     # Auto commits minified files to the repository
     # Ignore it if you don't want to commit the files to the repository 

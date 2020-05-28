@@ -25,10 +25,12 @@ jobs:
       uses: actions/setup-node@v1
       with:
         node-version: '12.x'
-    - name: Install uglifyJS
-      run: npm install uglify-js-es6 -g
-    - name: Uglify
-      run: uglifyjs wetplot.js -o wetplot.min.js --compress --mangle
+    - name: Install npx
+      run: npm i npx
+    - name: Install closure compiler
+      run: npm install --save google-closure-compiler
+    - name: Compile
+      run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js
 
     # Auto commits minified files to the repository
     # Ignore it if you don't want to commit the files to the repository 

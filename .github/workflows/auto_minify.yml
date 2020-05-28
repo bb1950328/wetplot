@@ -26,7 +26,7 @@ jobs:
       with:
         node-version: '12.x'
     - name: Install uglifyJS
-      run: npm install uglify-js -g
+      run: npm install uglify-es -g
     - name: Uglify
       run: uglifyjs wetplot.js -o wetplot.min.js
 

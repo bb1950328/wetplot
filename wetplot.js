@@ -1,3 +1,9 @@
+/**
+ * wetplot.js - a library to display plots of weather data.
+ * Content Hash: 234
+ * Commit Number: 1
+ */
+
 const DEFAULT_LINE_CODE = "###default###";
 
 // language=CSS
@@ -823,9 +829,6 @@ class WetplotData {
         this.heads = heads;
         this.values = values;
     }
-
-    heads = []
-    values = []
 
     getValue(rowIndex, columnName) {
         return this.values[rowIndex][this.heads.indexOf(columnName)];

@@ -1,3 +1,9 @@
+/**
+ * wetplot.js - a library to display plots of weather data.
+ * Content Hash: 234
+ * Commit Number: 1
+ */
+
 const DEFAULT_LINE_CODE = "###default###";
 
 // language=CSS
@@ -92,43 +98,42 @@ function _split_to_digits(value) {
 }
 
 class Wetplot {
-    _config = {
-        rows: [],
-        container_id: "wetplot-container",
-        width: 1000,
-        height: 500,
-        background_color: "#c7c1a7",
-        hover_box_background_color: "#fafafa",
-        time_offset: Math.round(((+new Date()) - (1000 * 60 * 60 * 24)) / 1000),//in seconds, default is one day before
-        time_lenght: 60 * 60 * 24 * 2, // in seconds
-        seconds_per_pixel: 60,
-        seconds_per_grid_line: 3600,
-        num_horizontal_grid_lines: 20,
-        caching_enabled: false,
-        db_name: "wetplot",
-        intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
-        allow_scrolling_to_far: false, // allow user to scroll farther left than time_offset or farther right than time_offset+time_length
-        font_size_px: 16,
-    }
-
-    _line_config = {
-        "###default###": {
-            "type": "line",//"ybar" possible too
-            "color": "#000000",
-            "line_width": 2,
-            "name": "?",
-            "unit": "1",
-            "auto_min_max": false,
-            "min": -1,
-            "max": 25,
+    constructor() {
+        this._config = {
+            rows: [],
+            container_id: "wetplot-container",
+            width: 1000,
+            height: 500,
+            background_color: "#c7c1a7",
+            hover_box_background_color: "#fafafa",
+            time_offset: Math.round(((+new Date()) - (1000 * 60 * 60 * 24)) / 1000),//in seconds, default is one day before
+            time_lenght: 60 * 60 * 24 * 2, // in seconds
+            seconds_per_pixel: 60,
+            seconds_per_grid_line: 3600,
+            num_horizontal_grid_lines: 20,
+            caching_enabled: false,
+            db_name: "wetplot",
+            intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
+            allow_scrolling_to_far: false, // allow user to scroll farther left than time_offset or farther right than time_offset+time_length
+            font_size_px: 16,
         }
+        this._line_config = {
+            "###default###": {
+                "type": "line",//"ybar" possible too
+                "color": "#000000",
+                "line_width": 2,
+                "name": "?",
+                "unit": "1",
+                "auto_min_max": false,
+                "min": -1,
+                "max": 25,
+            }
+        }
+        this._data = null;
+        this._x_offset = 0;
+        this._created_y_axes = [];
     }
 
-    _data = null;
-
-    _x_offset = 0;
-
-    _created_y_axes = [];
 
     initialize() {
         this._svgElement = createSvgElement("svg");
@@ -832,9 +837,6 @@ class WetplotData {
         this.heads = heads;
         this.values = values;
     }
-
-    heads = []
-    values = []
 
     getValue(rowIndex, columnName) {
         return this.values[rowIndex][this.heads.indexOf(columnName)];

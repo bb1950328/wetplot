@@ -1,2 +1,2 @@
 # wetplot
-A javaScript library to show weather data in svg plots
+A JavaScript library to show weather data in svg plots

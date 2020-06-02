@@ -725,12 +725,16 @@ class Wetplot {
         }
     }
 
-    _moveViewBoxPixels(deltaPx = 0) {
-        if (!deltaPx) {
+    _moveViewBoxPixels(pixels = 0, absolute = false) {
+        if (!pixels) {
             return;
         }
         let [x1, y1, x2, y2] = this._svgElement.getAttribute("viewBox").split(" ");
-        x1 = Number.parseInt(x1) + deltaPx;
+        if (absolute) {
+            x1 = pixels;
+        } else {
+            x1 = Number.parseInt(x1) + pixels;
+        }
         if (!this._config["allow_scrolling_to_far"]) {
             x1 = Math.max(0, x1);
             let x1max = this._getXmax() - this._config["width"];
@@ -816,6 +820,10 @@ class Wetplot {
             result[lineCode] = (aVal) + (bVal - aVal) * exactPos;
         });
         return result
+    }
+
+    scrollTo(value) {
+        this._moveViewBoxPixels(value, true);
     }
 }
 

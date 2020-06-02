@@ -10,21 +10,23 @@ jobs:
   minify:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Use Node.js
-      uses: actions/setup-node@v1
-      with:
-        node-version: '12.x'
-    - name: Install npx
-      run: npm i npx
-    - name: Install closure compiler
-      run: npm install --save google-closure-compiler
-    - name: Compile
-      run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js
-    - name: Delete node_modules
-      run: rm -rf node_modules
-    - name: Auto committing minified files
-      uses: stefanzweifel/git-auto-commit-action@v3.0.0
-      with:
-        commit_message: "Github Action: Auto Minified JS file"
-        branch: ${{ github.ref }}
+      - uses: actions/checkout@v2
+      - name: Use Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: '12.x'
+      - name: Install npx
+        run: npm i npx
+      - name: Install closure compiler
+        run: npm install --save google-closure-compiler
+      - name: Compile
+        run: npx google-closure-compiler --js=wetplot.js --js_output_file=wetplot.min.js
+      - name: Delete node_modules
+        run: rm -rf node_modules
+      - name: Delete package-lock.json
+        run: rm package-lock.json
+      - name: Auto committing minified files
+        uses: stefanzweifel/git-auto-commit-action@v3.0.0
+        with:
+          commit_message: "Github Action: Auto Minified JS file"
+          branch: ${{ github.ref }}

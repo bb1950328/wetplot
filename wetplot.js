@@ -1,9 +1,3 @@
-/**
- * wetplot.js - a library to display plots of weather data.
- * Content Hash: 234
- * Commit Number: 1
- */
-
 const DEFAULT_LINE_CODE = "###default###";
 
 // language=CSS
@@ -95,6 +89,22 @@ function _split_to_digits(value) {
     }
     digits.reverse();
     return digits;
+}
+
+class WetplotDataController {
+    constructor() {
+        this.data = new WetplotData();
+        this.data_providers = [];
+    }
+
+    /**
+     * Add a function which gets called when the controller needs data.
+     * It should return a instance of WetplotData or null if it can't provide data for the requested timespan
+     * @param provider function(start_timestamp, end_timestamp)
+     */
+    addDataProvider(provider) {
+        this.data_providers.push(provider);
+    }
 }
 
 class Wetplot {
@@ -194,9 +204,13 @@ class Wetplot {
                 if (previous === undefined) {
                     return addObj(obj);
                 }
-                console.debug("Update " + JSON.stringify(previous));
+                let old_value = JSON.stringify(previous);
                 Object.assign(previous, obj);
-                objectStore.put(previous);
+                let new_value = JSON.stringify(previous);
+                if (old_value !== new_value) {
+                    console.debug("Update " + old_value);
+                    objectStore.put(previous);
+                }
             }
 
             wetplotData.forEachObject(function (obj) {
@@ -711,8 +725,8 @@ class Wetplot {
         return this._line_config[lineId][property];
     }
 
-    add2dArrayData(heads, values) {
-        let newData = new WetplotData(heads, values);
+    addWetplotData(newData) {
+        this._addDataToDb("10min", newData); // todo better solution than constant parameter
         if (this._data === null) {
             this._data = newData;
         } else {
@@ -839,36 +853,55 @@ class WetplotData {
     }
 
     getValue(rowIndex, columnName) {
-        return this.values[rowIndex][this.heads.indexOf(columnName)];
+        let row = this.values[rowIndex];
+        return row ? row[this.getColumnIndex(columnName)] : undefined;
+    }
+
+    getColumnIndex(columnName) {
+        return this.heads.indexOf(columnName);
     }
 
     static concatenate(a, b) {
         let result = new WetplotData();
-        let heads_missing_in_a = [];
-        let heads_missing_in_b = [];
-        a.heads.forEach(head => {
-            if (b.heads.indexOf(head) === -1) {
-                heads_missing_in_b.push(head);
-            }
-        });
+        a.heads.forEach(result.heads.push);
         b.heads.forEach(head => {
-            if (a.heads.indexOf(head) === -1) {
-                heads_missing_in_a.push(head);
+            if (result.heads.indexOf(head) === -1) {
+                result.push(head);
             }
         });
-        this._add_columns(a, heads_missing_in_a);
-        this._add_columns(b, heads_missing_in_b);
         let aTime0 = a.getValue(0, "Time");
         let bTime0 = b.getValue(0, "Time");
         let time_cursor = Math.min(aTime0, bTime0);
         let a_cursor = 0;
         let b_cursor = 0;
+        let col_nums_a = {};
+        let col_nums_b = {};
+        result.heads.forEach(headName => {
+            col_nums_a[headName] = a.getColumnIndex(headName);
+            col_nums_b[headName] = b.getColumnIndex(headName);
+        });
         while (a_cursor < a.values.length || b_cursor < b.values.length) {
             let diffA = a.getValue(a_cursor, "Time") - time_cursor;
             let diffB = b.getValue(b_cursor, "Time") - time_cursor;
-            if (diffA <= diffB) {
-                result.values.push();
-                //todo  implement or delete
+            if (isNaN(diffB) || diffA <= diffB) {//todo fix duplication
+                let row = [];
+                let source_row = a.values[a_cursor];
+                for (const head of result.heads) {
+                    row.push(source_row[col_nums_a[head]]);
+                }
+                result.values.push(row);
+                time_cursor = a.getValue(a_cursor, "Time");
+                a_cursor++;
+            }
+            if (isNaN(diffA) || diffB <= diffA) {
+                let row = [];
+                let source_row = b.values[b_cursor];
+                for (const head of result.heads) {
+                    row.push(source_row[col_nums_b[head]]);
+                }
+                result.values.push(row);
+                time_cursor = b.getValue(b_cursor, "Time");
+                b_cursor++;
             }
         }
         return result;

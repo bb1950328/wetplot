@@ -13,10 +13,13 @@
         wp = new Wetplot();
         let array = [];
         let x = 1;
-        for (let i = new Date().valueOf() / 1000 - 60 * 60 * 24; i < new Date().valueOf() / 1000 + 60 * 60 * 24; i += 600) {
+        let now_in_seconds = new Date().valueOf() / 1000;
+        for (let i = now_in_seconds - 60 * 60 * 24 * 2; i <= now_in_seconds; i += 600) {
             array.push([Math.round(i), Math.sin(x) * 4 + 10, Math.cos(x), Math.sin(x + 10) + 1]);
             x += 0.1;
         }
+        wp.config("time_offset", Math.round((now_in_seconds - (60 * 60 * 24 * 2.5))))
+        wp.config("time_length", Math.round(60 * 60 * 24 * 2.5))
         let data = new WetplotData(["Time", "Temp", "Light", "Rain"], array);
         wp._addDataToDb("10min", data);
         wp._data = data;
@@ -38,6 +41,7 @@
 
         wp.usePalette(0);
         wp.initialize();
+        wp.scrollTo(10000000000000000000000000);
     });
 </script>
 </body>

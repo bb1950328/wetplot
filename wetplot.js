@@ -112,23 +112,8 @@ function _split_to_digits(value) {
     return digits;
 }
 
-class WetplotDataController {
-    constructor() {
-        this.data = new WetplotData();
-        this.data_providers = [];
-    }
-
-    /**
-     * Add a function which gets called when the controller needs data.
-     * It should return a instance of WetplotData or null if it can't provide data for the requested timespan
-     * @param provider function(start_timestamp, end_timestamp)
-     */
-    addDataProvider(provider) {
-        this.data_providers.push(provider);
-    }
-}
-
 class Wetplot {
+
     constructor() {
         this._config = {
             rows: [],
@@ -164,6 +149,7 @@ class Wetplot {
         this._data = null;
         this._x_offset = 0;
         this._created_y_axes = [];
+        this._data_callback = null;
     }
 
 
@@ -258,6 +244,30 @@ class Wetplot {
             let request = objectStore.getAll(IDBKeyRange.bound(startTs, endTs));
             request.onsuccess = function (event) {
                 callback(WetplotData.fromObjectArray(request.result));
+            }
+        });
+    }
+
+    get data_callback() {
+        return this._data_callback;
+    }
+
+    /**
+     * @param value function(interval, startTs, endTs, callback)
+     * The function takes an interval (for example "day"), the start and end timestamps in seconds
+     * and another function as parameters.
+     * It should load the requested data and call the 4th parameter with the result as a {WetplotData}
+     */
+    set data_callback(value) {
+        this._data_callback = value;
+    }
+
+    _request_data(interval, startTs, endTs) {
+        this._getDataFromDb(interval, startTs, endTs, already_here => {
+            if (this._data_callback !== null) {
+                this._data_callback(interval, startTs, endTs, new_data => {
+                    this._addDataToDb(interval, new_data);
+                });
             }
         });
     }
@@ -358,7 +368,7 @@ class Wetplot {
             }
         } else if (config["type"] === "ybar") {
             fill = true;
-            let changingProperty = timestampSec => Math.floor(timestampSec/this._config["seconds_per_grid_line"]); // todo make customizeable
+            let changingProperty = timestampSec => Math.floor(timestampSec / this._config["seconds_per_grid_line"]); // todo make customizeable
             let lastPropertyValue = undefined;
             let aTs = this._config["time_offset"];
             let lastTimestamp = aTs;
@@ -938,13 +948,13 @@ class Wetplot {
 
     _redraw_all() {
         console.log("TODO: redraw everything");
-        let half_width = Math.floor(this._config["width"]/2);
-        let old_middle_secs = this._x_coords_to_seconds(this._x_offset+ half_width);
+        let half_width = Math.floor(this._config["width"] / 2);
+        let old_middle_secs = this._x_coords_to_seconds(this._x_offset + half_width);
         this._redraw_y_axis();
         this._redraw_x_axis();
         this._redraw_horizontal_grid();
         this._rebuildAllLines();
-        this._moveViewBoxPixels(this._seconds_to_x_coords(old_middle_secs)-half_width, true);
+        this._moveViewBoxPixels(this._seconds_to_x_coords(old_middle_secs) - half_width, true);
     }
 }
 
@@ -1064,5 +1074,39 @@ class WetplotData {
             }
         }
         return [minVal, maxVal];
+    }
+
+    /**
+     *
+     * @param startTs
+     * @param endTs
+     * @param max_gap_seconds
+     * @param leave_gap how much of the gap should be included inside the resulting timespans, default is 0.5
+     * @returns {[]}
+     */
+    getMissingTimespans(startTs, endTs, max_gap_seconds, leave_gap=0.5) {
+        let time_col_idx = this.getColumnIndex("Time");
+        let result = [];
+        let t = this.values[0][time_col_idx];
+        if (t-startTs > max_gap_seconds) {
+            result.push([startTs, t]);
+        }
+        t = this.values[this.values.length-1][time_col_idx];
+        if (endTs-t>max_gap_seconds) {
+            result.push([t, endTs]);
+        }
+
+        for (let i = 1; i < this.values.length - 2; i++) {
+            let t1 = this.values[i][time_col_idx];
+            let t2 = this.values[i+1][time_col_idx];
+            if (t2-t1 > max_gap_seconds) {
+                result.push([t1, t2]);
+            }
+        }
+        for (let i = 0; i < result.length; i++) {
+            let [a, b] = result[i];
+            result[i] = [a+leave_gap*max_gap_seconds, b-leave_gap*max_gap_seconds];
+        }
+        return result
     }
 }

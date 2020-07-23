@@ -26,6 +26,8 @@ const WETPLOT_CSS = `
         background-color: #aaaaaaaa;
         text-align: center;
         vertical-align: center;
+        margin-top: 0.25rem;
+        margin-left: 0.25rem;
     }
 
     .wetplot-button:hover {
@@ -70,7 +72,12 @@ const TEXTS = {
         "en": "Time",
         "de": "Zeit",
         "fr": "Temps",
-    }
+    },
+    "VISIBLE_LINES": {
+        "en": "Visible Lines",
+        "de": "Sichtbare Linien",
+        "fr": "Lignes visibles",
+    },
 }
 
 function getText(key) {
@@ -129,9 +136,17 @@ class Wetplot {
             num_horizontal_grid_lines: 20,
             caching_enabled: false,
             db_name: "wetplot",
-            intervals: ["10min", "1hour", "24hour", "7days", "1month", "1year"],
+            intervals: {
+                "10min": 10 * 60,
+                "hour": 60 * 60,
+                "day": 24 * 60 * 60,
+                "week": 7 * 24 * 60 * 60,
+                "month": 31 * 24 * 60 * 60,
+                "year": 365 * 24 * 60 * 60
+            },
             allow_scrolling_to_far: false, // allow user to scroll farther left than time_offset or farther right than time_offset+time_length
             font_size_px: 16,
+            show_line_visibility_button: true,
             show_zoom_buttons: true,
         }
         this._line_config = {
@@ -144,6 +159,7 @@ class Wetplot {
                 "auto_min_max": false,
                 "min": -1,
                 "max": 25,
+                "visible": true,
             }
         }
         this._data = null;
@@ -182,7 +198,7 @@ class Wetplot {
     _openDb(successCallback = (db) => {
     }) {
         let request = window.indexedDB.open(this._config["db_name"], 1);
-        let time_intervals = this._config["intervals"];
+        let time_intervals = Object.getOwnPropertyNames(this._config["intervals"]);
         request.onerror = function (event) {
             console.error(event.target.errorCode);
         }
@@ -303,7 +319,8 @@ class Wetplot {
             let date = new Date(secs * 1000);
             let x = Math.round(this._seconds_to_x_coords(secs));
             let dateForHuman = date.toLocaleString();
-            dateForHuman = dateForHuman.substring(0, dateForHuman.lastIndexOf(":")); // cut off seconds
+            let seconds_start = dateForHuman.lastIndexOf(":");
+            dateForHuman = dateForHuman.substring(0, seconds_start) + dateForHuman.substring(seconds_start + 3, dateForHuman.length); // remove seconds
             let txt = createSvgElement("text");
             txt.innerHTML = dateForHuman;
             txt.setAttribute("x", 0);
@@ -345,76 +362,78 @@ class Wetplot {
         let colNum = this._data.heads.indexOf(lineCode);
         let timeCol = this._data.heads.indexOf("Time");
         const config = this._line_config[lineCode];
-        if (config["auto_min_max"]) {
-            let [min, max] = this._data.getMinMaxForColumn(colNum);
-            let padding = (max - min) / 100;
-            config["min"] = min - padding;
-            config["max"] = max + padding;
-        }
-        let path;
+        let path = "";
         let fill = false;
-        if (config["type"] === "line") {
-            path = "M";
-            let first = true;
-            for (let i = 0; i < this._data.values.length; i++) {
-                let x = this._seconds_to_x_coords(this._data.values[i][timeCol]);
-                let y = this._value_to_y_coord(lineCode, this._data.values[i][colNum]);
-                if (first) {
-                    first = false;
-                } else {
-                    path += " L";
-                }
-                path += (" " + Math.round(x) + " " + Math.round(y));
-            }
-        } else if (config["type"] === "ybar") {
-            fill = true;
-            let changingProperty = timestampSec => Math.floor(timestampSec / this._config["seconds_per_grid_line"]); // todo make customizeable
-            let lastPropertyValue = undefined;
-            let aTs = this._config["time_offset"];
-            let lastTimestamp = aTs;
-            let sum = 0;
-            let sumMax = 0;
-            let data = [];
-            for (let i = 0; i < this._data.values.length; i++) {
-                let ts = this._data.values[i][timeCol];
-                let nowPropertyValue = changingProperty(ts);
-                if (lastPropertyValue !== undefined && lastPropertyValue !== nowPropertyValue) {
-                    data.push([aTs, lastTimestamp, sum]);
-                    aTs = ts;
-                    sumMax = Math.max(sum, sumMax);
-                    sum = 0;
-                }
-                sum += this._data.values[i][colNum];
-                lastPropertyValue = nowPropertyValue;
-                lastTimestamp = ts;
-            }
-
+        if (config["visible"]) {
             if (config["auto_min_max"]) {
-                config["min"] = 0;
-                config["max"] = sumMax * 1.01;
+                let [min, max] = this._data.getMinMaxForColumn(colNum);
+                let padding = (max - min) / 100;
+                config["min"] = min - padding;
+                config["max"] = max + padding;
             }
+            if (config["type"] === "line") {
+                path = "M";
+                let first = true;
+                for (let i = 0; i < this._data.values.length; i++) {
+                    let x = this._seconds_to_x_coords(this._data.values[i][timeCol]);
+                    let y = this._value_to_y_coord(lineCode, this._data.values[i][colNum]);
+                    if (first) {
+                        first = false;
+                    } else {
+                        path += " L";
+                    }
+                    path += (" " + Math.round(x) + " " + Math.round(y));
+                }
+            } else if (config["type"] === "ybar") {
+                fill = true;
+                let changingProperty = timestampSec => Math.floor(timestampSec / this._config["seconds_per_grid_line"]); // todo make customizeable
+                let lastPropertyValue = undefined;
+                let aTs = this._config["time_offset"];
+                let lastTimestamp = aTs;
+                let sum = 0;
+                let sumMax = 0;
+                let data = [];
+                for (let i = 0; i < this._data.values.length; i++) {
+                    let ts = this._data.values[i][timeCol];
+                    let nowPropertyValue = changingProperty(ts);
+                    if (lastPropertyValue !== undefined && lastPropertyValue !== nowPropertyValue) {
+                        data.push([aTs, lastTimestamp, sum]);
+                        aTs = ts;
+                        sumMax = Math.max(sum, sumMax);
+                        sum = 0;
+                    }
+                    sum += this._data.values[i][colNum];
+                    lastPropertyValue = nowPropertyValue;
+                    lastTimestamp = ts;
+                }
 
-            let y_zero = this._value_to_y_coord(lineCode, 0);
-            path = "M 0 " + y_zero;
-            for (let i = 0; i < data.length; i++) {
-                aTs = data[i][0];
-                let bTs = data[i][1];
-                sum = data[i][2];
+                if (config["auto_min_max"]) {
+                    config["min"] = 0;
+                    config["max"] = sumMax * 1.01;
+                }
 
-                let y = this._value_to_y_coord(lineCode, sum);
-                let x1 = this._seconds_to_x_coords(aTs) + 1;//todo make something better than +1
-                let x2 = this._seconds_to_x_coords(bTs) - 1;
+                let y_zero = this._value_to_y_coord(lineCode, 0);
+                path = "M 0 " + y_zero;
+                for (let i = 0; i < data.length; i++) {
+                    aTs = data[i][0];
+                    let bTs = data[i][1];
+                    sum = data[i][2];
 
-                path += " H " + x1;
-                path += " V " + y;
-                path += " H " + x2;
-                path += " V " + y_zero;
+                    let y = this._value_to_y_coord(lineCode, sum);
+                    let x1 = this._seconds_to_x_coords(aTs) + 1;//todo make something better than +1
+                    let x2 = this._seconds_to_x_coords(bTs) - 1;
+
+                    path += " H " + x1;
+                    path += " V " + y;
+                    path += " H " + x2;
+                    path += " V " + y_zero;
+                }
+                path += " Z";
+            } else {
+                console.error("Unknown type for line " + lineCode + ": \"" + config["type"] + "\"");
             }
-            path += " Z";
-        } else {
-            console.error("Unknown type for line " + lineCode + ": \"" + config["type"] + "\"");
         }
-        console.log(path);
+        console.debug(path);
 
         let pathElement = document.getElementById("path" + lineCode);
         if (pathElement === null) {
@@ -523,7 +542,7 @@ class Wetplot {
             valuesPopupG.style.display = "inline";
         }
 
-        this.getAllLineCodes().forEach(lineCode => {
+        this.getVisibleLineCodes().forEach(lineCode => {
             let id = "valuesPopup" + lineCode;
             let txt = document.getElementById(id);
             if (txt == null) {
@@ -545,7 +564,7 @@ class Wetplot {
         timeText.setAttribute("y", texts_y);
         let maxTxtLength = timeText.innerHTML.length;
 
-        let values = this._seconds_to_values(cursorTimestampSeconds);
+        let values = this._seconds_to_values(cursorTimestampSeconds, true);
         let valueElements = valuesPopupG.getElementsByClassName("valueText");
         for (let i = 0; i < valueElements.length; i++) {
             let txt = valueElements.item(i);
@@ -563,7 +582,7 @@ class Wetplot {
         let bgWidth = Math.ceil(maxTxtLength / 4.5) * 2;
         let bgHeight = texts_y + scale(0.25);
 
-        let estimatedBgHeight = scale(this.getAllLineCodes().length + 1.25);
+        let estimatedBgHeight = scale(this.getVisibleLineCodes().length + 1.25);
         let abs_y1 = (this._config["height"] + estimatedBgHeight) / 2;
 
         if (x_viewbox / this._config["width"] > 0.5) {
@@ -603,6 +622,10 @@ class Wetplot {
         return Object.getOwnPropertyNames(this._line_config).filter(el => el !== DEFAULT_LINE_CODE);
     }
 
+    getVisibleLineCodes() {
+        return this.getAllLineCodes().filter(el => this._line_config[el]["visible"]);
+    }
+
     numberToDisplayText(value, digitsAfterComma, maximum = undefined) {
         if (maximum === undefined) {
             maximum = value;
@@ -623,9 +646,9 @@ class Wetplot {
         return digits.join("") + suffix;
     }
 
-    _get_min_max_for_unit(unit) {
+    _get_visible_min_max_for_unit(unit) {
         let [minVal, maxVal] = [undefined, undefined];
-        this.getAllLineCodes().forEach(c => {
+        this.getVisibleLineCodes().forEach(c => {
             if (this._line_config[c]["unit"] === unit) {
                 let [minC, maxC] = [this._line_config[c]["min"], this._line_config[c]["max"]];
                 if (minVal === undefined) {
@@ -640,9 +663,9 @@ class Wetplot {
         return [minVal, maxVal];
     }
 
-    _count_units() {
+    _count_visible_units() {
         let units = [];
-        this.getAllLineCodes().forEach(c => {
+        this.getVisibleLineCodes().forEach(c => {
             let u = this._line_config[c]["unit"];
             if (units.indexOf(u) === -1) {
                 units.push(u);
@@ -655,20 +678,25 @@ class Wetplot {
         const Y_AXIS_WIDTH = 4;
         let unit = this._line_config[code]["unit"];
         let id = "group" + this._unit_to_id(unit);
-        if (this._created_y_axes.indexOf(id) === -1 && this._yAxisElement) {
+        if (this._yAxisElement) {
+            let old_g = this._yAxisElement.getElementById(id);
+            if (old_g) {
+                this._yAxisElement.removeChild(old_g);
+                this._created_y_axes = this._created_y_axes.filter(i => i !== id);//remove the id
+                console.log("removed old y axis with id " + id);
+            }
+        }
+        let any_visible_with_same_unit = this.getVisibleLineCodes().filter(c => this._line_config[c]["unit"]===unit).length > 0;
+        console.log("any_visible_with_same_unit="+any_visible_with_same_unit+"    unit=", unit);
+        if (any_visible_with_same_unit && this._created_y_axes.indexOf(id) === -1 && this._yAxisElement) {
             this._created_y_axes.push(id);
             let fontSize = this._config["font_size_px"];
-            let allCodes = this.getAllLineCodes();
-            this._yAxisElement.setAttribute("width", this._count_units() * Y_AXIS_WIDTH * fontSize);
+            this._yAxisElement.setAttribute("width", (this._count_visible_units() * Y_AXIS_WIDTH * fontSize)+"px");
 
             let index = this._created_y_axes.length - 1;
 
             console.log("creating y axis for unit " + unit + ";" + index);
-            let old_g = this._yAxisElement.getElementById(id);
-            if (old_g) {
-                this._yAxisElement.removeChild(old_g);
-                console.debug("removed old y axis with id " + id);
-            }
+
             let g = createSvgElement("g");
             g.setAttribute("id", id);
             g.setAttribute("fill", this._line_config[code]["color"]);
@@ -680,9 +708,9 @@ class Wetplot {
             unitElement.innerHTML = unit;
             unitElement.style.fontSize = fontSize + "px";
             unitElement.setAttribute("y", fontSize);
-            unitElement.setAttribute("x", (index * Y_AXIS_WIDTH + 0.5) * fontSize);
+            unitElement.setAttribute("x", ((index * Y_AXIS_WIDTH + 0.5) * fontSize)+"px");
 
-            let [minVal, maxVal] = this._get_min_max_for_unit(unit);
+            let [minVal, maxVal] = this._get_visible_min_max_for_unit(unit);
 
             let minValueStep = (fontSize * 1.2) / (this._config["height"] / (maxVal - minVal));
             let yValueDigitsAfterComma = 0;
@@ -868,18 +896,18 @@ class Wetplot {
     }
 
     _value_to_y_coord(lineCode, value) {
-        let [min, max] = this._get_min_max_for_unit(this._line_config[lineCode]["unit"]);
+        let [min, max] = this._get_visible_min_max_for_unit(this._line_config[lineCode]["unit"]);
         let span = max - min;
         return this._config["height"] - this._config["height"] * ((value - min) / span)
     }
 
     _y_coord_to_value(lineCode, y_coord) {
-        let [min, max] = this._get_min_max_for_unit(this._line_config[lineCode]["unit"]);
+        let [min, max] = this._get_visible_min_max_for_unit(this._line_config[lineCode]["unit"]);
         let span = max - min;
         return (this._config["height"] - y_coord) / this._config["height"] * span + min;
     }
 
-    _seconds_to_values(timestamp) {
+    _seconds_to_values(timestamp, visible_only=false) {
         let [a, b] = this._nearestTwoDataRows(timestamp);
         let result = {};
         if (a !== null || b !== null) {
@@ -892,7 +920,10 @@ class Wetplot {
             let aTs = a[time_idx];
             let bTs = b[time_idx];
             let exactPos = (timestamp - aTs) / (bTs - aTs);
-            this.getAllLineCodes().forEach(lineCode => {
+            (visible_only
+                ?this.getVisibleLineCodes()
+                :this.getAllLineCodes()
+            ).forEach(lineCode => {
                 let idx = this._data.heads.indexOf(lineCode);
                 let aVal = a[idx];
                 let bVal = b[idx];
@@ -918,14 +949,61 @@ class Wetplot {
         this._redraw_all();
     }
 
+    toggleLineVisibility(lineCode) {
+        this._line_config[lineCode]["visible"] = !this._line_config[lineCode]["visible"];//todo more elegant solution, maybe with XOR
+        this._redraw_all();
+    }
+
 
     _show_buttons() {
         let buttons = [];
+        if (this._config["show_line_visibility_button"]) {
+            let lineToggleContainer = document.createElement("div");
+            lineToggleContainer.setAttribute("id", "wetplot-line-toggle-container");
+            lineToggleContainer.style.display = "none";
+            lineToggleContainer.style.position = "absolute";
+            lineToggleContainer.style.backgroundColor = "#cccccccc";
+
+            this.getAllLineCodes().forEach(lineCode => {
+                let lineToggle = document.createElement("div");
+                lineToggle.style.color = this._line_config[lineCode]["color"];
+                lineToggle.setAttribute("id", "toggle_" + lineCode);
+                lineToggle.innerText = "☑" + this._line_config[lineCode]["name"];
+                lineToggle.addEventListener("click", event => {
+                    this.toggleLineVisibility(lineCode);
+                    if (this._line_config[lineCode]["visible"]) {
+                        lineToggle.style.color = this._line_config[lineCode]["color"];
+                        lineToggle.innerText = "☑" + lineToggle.innerText.substring(1);
+                    } else {
+                        lineToggle.style.color = "#444444";
+                        lineToggle.innerText = "◻" + lineToggle.innerText.substring(1);
+                    }
+                    this._redraw_all();
+                });
+                lineToggleContainer.appendChild(lineToggle);
+            });
+
+            let dd_btn = document.createElement("div");
+            dd_btn.innerText = "👁";
+            dd_btn.alt = getText("VISIBLE_LINES")
+            dd_btn.addEventListener("click", event => {
+                if (lineToggleContainer.style.display === "none") {
+                    lineToggleContainer.style.display = "block";
+                    let dd_client_rect = dd_btn.getBoundingClientRect();
+                    lineToggleContainer.style.top = (dd_client_rect.bottom + dd_client_rect.top) + "px";
+                    lineToggleContainer.style.left = dd_client_rect.left + "px";
+                } else {
+                    lineToggleContainer.style.display = "none";
+                }
+            });
+            this._wrapperElement.appendChild(lineToggleContainer);
+            buttons.push(dd_btn);
+        }
         if (this._config["show_zoom_buttons"]) {
             let plus = document.createElement("div");
             let minus = document.createElement("div");
-            plus.innerText = "+";//todo icon
-            minus.innerText = "-";//todo icon
+            plus.innerText = "➕";
+            minus.innerText = "➖";
             plus.addEventListener("click", x => this.zoomIn());
             minus.addEventListener("click", x => this.zoomOut());
 
@@ -947,7 +1025,7 @@ class Wetplot {
     }
 
     _redraw_all() {
-        console.log("TODO: redraw everything");
+        let start = performance.now();
         let half_width = Math.floor(this._config["width"] / 2);
         let old_middle_secs = this._x_coords_to_seconds(this._x_offset + half_width);
         this._redraw_y_axis();
@@ -955,6 +1033,8 @@ class Wetplot {
         this._redraw_horizontal_grid();
         this._rebuildAllLines();
         this._moveViewBoxPixels(this._seconds_to_x_coords(old_middle_secs) - half_width, true);
+        let end = performance.now();
+        console.info("_redraw_all() took " + (end - start) / 1000 + "s");
     }
 }
 

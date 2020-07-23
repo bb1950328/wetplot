@@ -302,7 +302,7 @@ class Wetplot {
         for (let secs = Math.round(seconds_start / seconds_step) * seconds_step; secs < seconds_start + this._config["time_length"]; secs += seconds_step) {
             let date = new Date(secs * 1000);
             let x = Math.round(this._seconds_to_x_coords(secs));
-            let dateForHuman = date.toLocaleDateString() + " " + date.toLocaleTimeString();
+            let dateForHuman = date.toLocaleString();
             dateForHuman = dateForHuman.substring(0, dateForHuman.lastIndexOf(":")); // cut off seconds
             let txt = createSvgElement("text");
             txt.innerHTML = dateForHuman;
@@ -1084,28 +1084,28 @@ class WetplotData {
      * @param leave_gap how much of the gap should be included inside the resulting timespans, default is 0.5
      * @returns {[]}
      */
-    getMissingTimespans(startTs, endTs, max_gap_seconds, leave_gap=0.5) {
+    getMissingTimespans(startTs, endTs, max_gap_seconds, leave_gap = 0.5) {
         let time_col_idx = this.getColumnIndex("Time");
         let result = [];
         let t = this.values[0][time_col_idx];
-        if (t-startTs > max_gap_seconds) {
+        if (t - startTs > max_gap_seconds) {
             result.push([startTs, t]);
         }
-        t = this.values[this.values.length-1][time_col_idx];
-        if (endTs-t>max_gap_seconds) {
+        t = this.values[this.values.length - 1][time_col_idx];
+        if (endTs - t > max_gap_seconds) {
             result.push([t, endTs]);
         }
 
         for (let i = 1; i < this.values.length - 2; i++) {
             let t1 = this.values[i][time_col_idx];
-            let t2 = this.values[i+1][time_col_idx];
-            if (t2-t1 > max_gap_seconds) {
+            let t2 = this.values[i + 1][time_col_idx];
+            if (t2 - t1 > max_gap_seconds) {
                 result.push([t1, t2]);
             }
         }
         for (let i = 0; i < result.length; i++) {
             let [a, b] = result[i];
-            result[i] = [a+leave_gap*max_gap_seconds, b-leave_gap*max_gap_seconds];
+            result[i] = [a + leave_gap * max_gap_seconds, b - leave_gap * max_gap_seconds];
         }
         return result
     }

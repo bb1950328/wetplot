@@ -9,19 +9,34 @@
 <div id="wetplot-container"></div>
 <script>
     let wp;
+
+    function getDataRow(timestamp) {
+        let x = (timestamp/2500)%250;
+        //that's how the weather is calculated ;)
+        return [Math.round(timestamp), Math.sin(x*1.65) * 4 + 12, Math.sin(x - 200) * 3.2 + 12, Math.cos(x), Math.sin(x + 10) + 1];
+    }
+
     document.addEventListener("DOMContentLoaded", function (event) {
         wp = new Wetplot();
         let array = [];
-        let x = 1;
         let now_in_seconds = new Date().valueOf() / 1000;
-        for (let i = now_in_seconds - 60 * 60 * 24 * 2; i <= now_in_seconds; i += 600) {
-            array.push([Math.round(i), Math.sin(x) * 4 + 10, Math.sin(x-200) * 3.2 + 12, Math.cos(x), Math.sin(x + 10) + 1]);
-            x += 0.1;
+        let interval_seconds = 600;
+        for (let i = now_in_seconds - 60 * 60 * 24 * 2; i <= now_in_seconds; i += interval_seconds) {
+            array.push(getDataRow(i));
         }
         wp.config("time_offset", Math.round((now_in_seconds - (60 * 60 * 24 * 2.5))))
         wp.config("time_length", Math.round(60 * 60 * 24 * 2.5))
-        let data = new WetplotData(["Time", "Temp1", "Temp2", "Light", "Rain"], array);
+        const heads = ["Time", "Temp1", "Temp2", "Light", "Rain"];
+        let data = new WetplotData(heads, array);
         wp._addDataToDb("10min", data);
+        wp.data_callback = function(interval, startTs, endTs, result_callback) {
+            console.log("data_callback(" + interval + ", " + startTs + ", " + endTs + ", " + result_callback + ")");
+            let array = [];
+            for (let ts = startTs; ts <= endTs; ts+=interval_seconds) {
+                array.push(getDataRow(ts));
+            }
+            result_callback(new WetplotData(heads, array));
+        }
         wp._data = data;
         wp.config("height", window.innerHeight * 0.9);
         wp.config("background_color", "#ffffff");
@@ -33,6 +48,7 @@
         wp.lineConfig("Rain", "type", "ybar");
 
         wp.addLine("Temp1");
+        wp.lineConfig("Temp1", "auto_min_max", true);
         wp.lineConfig("Temp1", "unit", "°C");
 
         wp.addLine("Temp2");

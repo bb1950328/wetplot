@@ -157,14 +157,14 @@ class Wetplot {
                 "name": "?",
                 "unit": "1",
                 "auto_min_max": false,
-                "min": -1,
-                "max": 25,
+                "min": 0,
+                "max": 10,
                 "visible": true,
             }
         }
         this._data = null;
         this._x_offset = 0;
-        this._created_y_axes = [];
+
         this._data_callback = null;
     }
 
@@ -187,6 +187,7 @@ class Wetplot {
         this._add_style();
         this._addPanEventListeners();
         this._openDb();
+        this._set_auto_min_max();
         this._rebuildAllLines();
         this._create_y_axis();
         this._redraw_x_axis();
@@ -280,9 +281,15 @@ class Wetplot {
 
     _request_data(interval, startTs, endTs) {
         this._getDataFromDb(interval, startTs, endTs, already_here => {
+            this._data = WetplotData.concatenate(this._data, already_here);
             if (this._data_callback !== null) {
-                this._data_callback(interval, startTs, endTs, new_data => {
-                    this._addDataToDb(interval, new_data);
+                this._data.getMissingTimespans(startTs, endTs, 600/*todo make dynamic*/).forEach(value => {
+                    let [mstart, mend] = value;
+                    this._data_callback(interval, mstart, mend, new_data => {
+                        this._addDataToDb(interval, new_data);
+                        this._data = WetplotData.concatenate(this._data, new_data);
+                        this._redraw_all();
+                    });
                 });
             }
         });
@@ -358,6 +365,65 @@ class Wetplot {
         this.getAllLineCodes().forEach(lineCode => this._rebuildLine(lineCode));
     }
 
+    _set_auto_min_max() {
+        let visible_units = [];
+        let unit_codes = {};
+        const timeColNum = this._data.heads.indexOf("Time");
+        this.getVisibleLineCodes().forEach(code => {
+            let unit = this._line_config[code]["unit"];
+            if (visible_units.indexOf(unit) === -1) {
+                visible_units.push(unit);
+                unit_codes[visible_units.length - 1] = [code];
+            } else {
+                unit_codes[visible_units.indexOf(unit)].push(code);
+            }
+        });
+        for (let i = 0; i < visible_units.length; i++) {
+            let codes = unit_codes[i];
+            let codes_with_auto_min_max = codes.filter(c => this._line_config[c]["auto_min_max"]);
+            let min = Infinity;//every number is smaller than Infinity
+            let max = -Infinity;//every number is bigger than +Infinity
+            for (const code of codes) {
+                if (this._line_config[code]["auto_min_max"]) {
+                    let line_type = this._line_config[code]["type"];
+                    const colNum = this._data.heads.indexOf(code);
+                    if (line_type === "line") {
+                        let [min2, max2] = this._data.getMinMaxForColumn(colNum);
+                        min = Math.min(min, min2);
+                        max = Math.max(max, max2);
+                    } else if (line_type === "ybar") {
+                        let lastPropertyValue = undefined;
+                        let aTs = this._config["time_offset"];
+                        let lastTimestamp = aTs;
+                        let sum = 0;
+                        for (let i = 0; i < this._data.values.length; i++) {
+                            let ts = this._data.values[i][timeColNum];
+                            let nowPropertyValue = this.changingPropertyForYBarLines(ts);
+                            if (lastPropertyValue !== undefined && lastPropertyValue !== nowPropertyValue) {
+                                aTs = ts;
+                                min = Math.min(min, sum);
+                                max = Math.max(max, sum);
+                                sum = 0;
+                            }
+                            sum += this._data.values[i][colNum];
+                            lastPropertyValue = nowPropertyValue;
+                            lastTimestamp = ts;
+                        }
+                    } else {
+                        throw Error("unsupported line type \"" + line_type + "\" for line \"" + code + "\"");
+                    }
+                } else {
+                    min = Math.min(min, this._line_config[code]["min"]);
+                    max = Math.max(max, this._line_config[code]["max"]);
+                }
+            }
+            codes_with_auto_min_max.forEach(c => {
+                this._line_config[c]["min"] = min;
+                this._line_config[c]["max"] = max;
+            });
+        }
+    }
+
     _rebuildLine(lineCode) {
         let colNum = this._data.heads.indexOf(lineCode);
         let timeCol = this._data.heads.indexOf("Time");
@@ -365,12 +431,6 @@ class Wetplot {
         let path = "";
         let fill = false;
         if (config["visible"]) {
-            if (config["auto_min_max"]) {
-                let [min, max] = this._data.getMinMaxForColumn(colNum);
-                let padding = (max - min) / 100;
-                config["min"] = min - padding;
-                config["max"] = max + padding;
-            }
             if (config["type"] === "line") {
                 path = "M";
                 let first = true;
@@ -386,30 +446,22 @@ class Wetplot {
                 }
             } else if (config["type"] === "ybar") {
                 fill = true;
-                let changingProperty = timestampSec => Math.floor(timestampSec / this._config["seconds_per_grid_line"]); // todo make customizeable
                 let lastPropertyValue = undefined;
                 let aTs = this._config["time_offset"];
                 let lastTimestamp = aTs;
                 let sum = 0;
-                let sumMax = 0;
                 let data = [];
                 for (let i = 0; i < this._data.values.length; i++) {
                     let ts = this._data.values[i][timeCol];
-                    let nowPropertyValue = changingProperty(ts);
+                    let nowPropertyValue = this.changingPropertyForYBarLines(ts);
                     if (lastPropertyValue !== undefined && lastPropertyValue !== nowPropertyValue) {
                         data.push([aTs, lastTimestamp, sum]);
                         aTs = ts;
-                        sumMax = Math.max(sum, sumMax);
                         sum = 0;
                     }
                     sum += this._data.values[i][colNum];
                     lastPropertyValue = nowPropertyValue;
                     lastTimestamp = ts;
-                }
-
-                if (config["auto_min_max"]) {
-                    config["min"] = 0;
-                    config["max"] = sumMax * 1.01;
                 }
 
                 let y_zero = this._value_to_y_coord(lineCode, 0);
@@ -451,6 +503,10 @@ class Wetplot {
         pathElement.setAttribute("d", path);
     }
 
+    changingPropertyForYBarLines(timestampSec) {
+        return Math.floor(timestampSec / this._config["seconds_per_grid_line"]); // todo make customizeable
+    }
+
     _create_y_axis() {
         this._yAxisElement = createSvgElement("svg");
         this._wrapperElement.appendChild(this._yAxisElement);
@@ -462,7 +518,6 @@ class Wetplot {
         const Y_AXIS_WIDTH = 4;
         let fontSize = this._config["font_size_px"];
         let visibleUnits = this._get_visible_units();
-        this._created_y_axes = []
         this._yAxisElement.setAttribute("height", this._config["height"]);
         this._yAxisElement.setAttribute("width", (visibleUnits.length * Y_AXIS_WIDTH * fontSize) + "px");
         this._yAxisElement.style.backgroundColor = this._config["background_color"];
@@ -780,7 +835,6 @@ class Wetplot {
         }
         this._line_config[lineId] = {...this._line_config[DEFAULT_LINE_CODE]};
         this._line_config[lineId]["name"] = lineId;
-        //this._add_y_axis_for_line_if_needed(lineId);
     }
 
     lineConfig(lineId, property, value = undefined) {
@@ -838,15 +892,12 @@ class Wetplot {
         let _last_mouse_move_x;
         wrapperElement.onwheel = (event) => {
             event.preventDefault();
-            //console.log(event.deltaX);
-            //console.log(event.deltaY);
             this._moveViewBoxPixels(event.deltaX * 10);
             this._moveViewBoxPixels(event.deltaY * 10);
             this._cursorMoved(event);
         }
         wrapperElement.onmousedown = (event) => {
             event.preventDefault();
-            //console.log("mousedown");
             _last_mouse_move_x = event.pageX;
 
             let onMouseMove = (event) => {
@@ -1011,10 +1062,11 @@ class Wetplot {
         let start = performance.now();
         let half_width = Math.floor(this._config["width"] / 2);
         let old_middle_secs = this._x_coords_to_seconds(this._x_offset + half_width);
+        this._set_auto_min_max();
+        this._rebuildAllLines();
         this._redraw_y_axis();
         this._redraw_x_axis();
         this._redraw_horizontal_grid();
-        this._rebuildAllLines();
         this._moveViewBoxPixels(this._seconds_to_x_coords(old_middle_secs) - half_width, true);
         let end = performance.now();
         console.info("_redraw_all() took " + (end - start) / 1000 + "s");

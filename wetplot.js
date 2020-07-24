@@ -153,7 +153,7 @@ class Wetplot {
             "###default###": {
                 "type": "line",//"ybar" possible too
                 "color": "#000000",
-                "line_width": 2,
+                "line_width": 1,
                 "name": "?",
                 "unit": "1",
                 "auto_min_max": false,
@@ -459,10 +459,95 @@ class Wetplot {
     }
 
     _redraw_y_axis() {
+        const Y_AXIS_WIDTH = 4;
+        let fontSize = this._config["font_size_px"];
+        let visibleUnits = this._get_visible_units();
         this._created_y_axes = []
         this._yAxisElement.setAttribute("height", this._config["height"]);
+        this._yAxisElement.setAttribute("width", (visibleUnits.length * Y_AXIS_WIDTH * fontSize) + "px");
         this._yAxisElement.style.backgroundColor = this._config["background_color"];
-        this.getAllLineCodes().forEach(code => this._add_y_axis_for_line_if_needed(code));
+        this._yAxisElement.innerHTML = "";
+        for (let index = 0; index < visibleUnits.length; index++) {
+            let unit = visibleUnits[index];
+            let id = "group" + this._unit_to_id(unit);
+            let lineCodesWithThisUnit = this.getVisibleLineCodes().filter(c => this._line_config[c]["unit"] === unit);
+            console.log("creating y axis for unit " + unit + ", index=" + index + ", codes=" + JSON.stringify(lineCodesWithThisUnit));
+            let firstCode = lineCodesWithThisUnit[0];
+
+            let g = createSvgElement("g");
+            g.setAttribute("id", id);
+            g.setAttribute("fill", this._line_config[firstCode]["color"]);
+
+            this._yAxisElement.appendChild(g);
+            let unitElement = createSvgElement("text");
+            g.appendChild(unitElement);
+            unitElement.innerHTML = unit;
+            unitElement.style.fontSize = fontSize + "px";
+            unitElement.setAttribute("y", fontSize);
+            unitElement.setAttribute("x", ((index * Y_AXIS_WIDTH + 0.5) * fontSize) + "px");
+
+            let [minVal, maxVal] = this._get_visible_min_max_for_unit(unit);
+
+            let minValueStep = (fontSize * 1.2) / (this._config["height"] / (maxVal - minVal));
+            let yValueDigitsAfterComma = 0;
+            let yValueStep;
+            if (minValueStep < 0.5) {
+                yValueDigitsAfterComma = 1;
+                let stp = minValueStep;
+                while (stp < 0.05) {
+                    yValueDigitsAfterComma++;
+                    stp *= 10;
+                }
+                if (stp < 0.1) {
+                    stp = 0.1;
+                } else if (stp < 0.2) {
+                    stp = 0.2;
+                } else {
+                    stp = 0.5;
+                }
+                stp /= (10 ** (yValueDigitsAfterComma - 1));
+                yValueStep = stp;
+            } else {
+                yValueStep = Math.ceil(minValueStep);
+            }
+
+            if (yValueStep === 0) {
+                console.warn("something is wrong, i can feel it");
+                // prevent endless loop
+                return;
+            }
+
+            let yMaxCoord = this._config["height"] - fontSize;
+            let yValue = Math.floor(minVal);
+            while (this._value_to_y_coord(firstCode, yValue) > yMaxCoord) {
+                yValue += yValueStep;
+            }
+            let yCoord = this._value_to_y_coord(firstCode, yValue);
+            let ladderPath = ""
+            let yFirstCoord = yCoord;
+            let yLastCoord;
+            let x = (index + 0.15) * Y_AXIS_WIDTH * fontSize;
+            while (yCoord > fontSize * 2) {
+                yLastCoord = yCoord;
+                let txt = createSvgElement("text");
+                txt.innerHTML = this.numberToDisplayText(yValue, yValueDigitsAfterComma);
+                txt.setAttribute("y", yCoord + fontSize * 0.4);
+                txt.setAttribute("x", x + fontSize / 3);
+                txt.style.fontSize = fontSize + "px";
+                g.appendChild(txt);
+
+                ladderPath += "M " + x + " " + yCoord + " h " + (fontSize / -3).toFixed(2) + " ";
+                yValue += yValueStep;
+                yCoord = this._value_to_y_coord(firstCode, yValue);
+            }
+            ladderPath += "M " + x + " " + yLastCoord + " V " + yFirstCoord;
+
+            let pathElement = createSvgElement("path");
+            pathElement.setAttribute("d", ladderPath);
+            pathElement.setAttribute("id", "yLadder" + firstCode);
+            pathElement.setAttribute("stroke", this._line_config[firstCode]["color"]);
+            g.appendChild(pathElement);
+        }
     }
 
     _createHoverCursor() {
@@ -663,7 +748,7 @@ class Wetplot {
         return [minVal, maxVal];
     }
 
-    _count_visible_units() {
+    _get_visible_units() {
         let units = [];
         this.getVisibleLineCodes().forEach(c => {
             let u = this._line_config[c]["unit"];
@@ -671,109 +756,7 @@ class Wetplot {
                 units.push(u);
             }
         });
-        return units.length;
-    }
-
-    _add_y_axis_for_line_if_needed(code) {
-        const Y_AXIS_WIDTH = 4;
-        let unit = this._line_config[code]["unit"];
-        let id = "group" + this._unit_to_id(unit);
-        if (this._yAxisElement) {
-            let old_g = this._yAxisElement.getElementById(id);
-            if (old_g) {
-                this._yAxisElement.removeChild(old_g);
-                this._created_y_axes = this._created_y_axes.filter(i => i !== id);//remove the id
-                console.log("removed old y axis with id " + id);
-            }
-        }
-        let any_visible_with_same_unit = this.getVisibleLineCodes().filter(c => this._line_config[c]["unit"]===unit).length > 0;
-        console.log("any_visible_with_same_unit="+any_visible_with_same_unit+"    unit=", unit);
-        if (any_visible_with_same_unit && this._created_y_axes.indexOf(id) === -1 && this._yAxisElement) {
-            this._created_y_axes.push(id);
-            let fontSize = this._config["font_size_px"];
-            this._yAxisElement.setAttribute("width", (this._count_visible_units() * Y_AXIS_WIDTH * fontSize)+"px");
-
-            let index = this._created_y_axes.length - 1;
-
-            console.log("creating y axis for unit " + unit + ";" + index);
-
-            let g = createSvgElement("g");
-            g.setAttribute("id", id);
-            g.setAttribute("fill", this._line_config[code]["color"]);
-
-            //g.setAttribute("transform", "translate("+(index*100/allCodes.length)+"% 0)");
-            this._yAxisElement.appendChild(g);
-            let unitElement = createSvgElement("text");
-            g.appendChild(unitElement);
-            unitElement.innerHTML = unit;
-            unitElement.style.fontSize = fontSize + "px";
-            unitElement.setAttribute("y", fontSize);
-            unitElement.setAttribute("x", ((index * Y_AXIS_WIDTH + 0.5) * fontSize)+"px");
-
-            let [minVal, maxVal] = this._get_visible_min_max_for_unit(unit);
-
-            let minValueStep = (fontSize * 1.2) / (this._config["height"] / (maxVal - minVal));
-            let yValueDigitsAfterComma = 0;
-            let yValueStep;
-            if (minValueStep < 0.5) {
-                yValueDigitsAfterComma = 1;
-                let stp = minValueStep;
-                while (stp < 0.05) {
-                    yValueDigitsAfterComma++;
-                    stp *= 10;
-                }
-                if (stp < 0.1) {
-                    stp = 0.1;
-                } else if (stp < 0.2) {
-                    stp = 0.2;
-                } else {
-                    stp = 0.5;
-                }
-                stp /= (10 ** (yValueDigitsAfterComma - 1));
-                yValueStep = stp;
-            } else {
-                yValueStep = Math.ceil(minValueStep);
-            }
-
-            if (yValueStep === 0) {
-                console.warn("something is wrong, i can feel it");
-                // prevent endless loop
-                return;
-            }
-
-            let yMaxCoord = this._config["height"] - fontSize;
-            let yValue = Math.floor(minVal);
-            while (this._value_to_y_coord(code, yValue) > yMaxCoord) {
-                //console.log(yValue);
-                yValue += yValueStep;
-            }
-            let yCoord = this._value_to_y_coord(code, yValue);
-            let ladderPath = ""
-            let yFirstCoord = yCoord;
-            let yLastCoord;
-            let x = (index + 0.15) * Y_AXIS_WIDTH * fontSize;
-            while (yCoord > fontSize * 2) {
-                yLastCoord = yCoord;
-                //console.log("val=" + yValue + "\tcoord=" + yCoord.toFixed(2) + "\tvalue_step=" + yValueStep);
-                let txt = createSvgElement("text");
-                txt.innerHTML = this.numberToDisplayText(yValue, yValueDigitsAfterComma);
-                txt.setAttribute("y", yCoord + fontSize * 0.4);
-                txt.setAttribute("x", x + fontSize / 3);
-                txt.style.fontSize = fontSize + "px";
-                g.appendChild(txt);
-
-                ladderPath += "M " + x + " " + yCoord + " h " + (fontSize / -3).toFixed(2) + " ";
-                yValue += yValueStep;
-                yCoord = this._value_to_y_coord(code, yValue);
-            }
-            ladderPath += "M " + x + " " + yLastCoord + " V " + yFirstCoord;
-
-            let pathElement = createSvgElement("path");
-            pathElement.setAttribute("d", ladderPath);
-            pathElement.setAttribute("id", "yLadder" + code);
-            pathElement.setAttribute("stroke", this._line_config[code]["color"]);
-            g.appendChild(pathElement);
-        }
+        return units;
     }
 
     _unit_to_id(unit) {
@@ -797,7 +780,7 @@ class Wetplot {
         }
         this._line_config[lineId] = {...this._line_config[DEFAULT_LINE_CODE]};
         this._line_config[lineId]["name"] = lineId;
-        this._add_y_axis_for_line_if_needed(lineId);
+        //this._add_y_axis_for_line_if_needed(lineId);
     }
 
     lineConfig(lineId, property, value = undefined) {
@@ -907,7 +890,7 @@ class Wetplot {
         return (this._config["height"] - y_coord) / this._config["height"] * span + min;
     }
 
-    _seconds_to_values(timestamp, visible_only=false) {
+    _seconds_to_values(timestamp, visible_only = false) {
         let [a, b] = this._nearestTwoDataRows(timestamp);
         let result = {};
         if (a !== null || b !== null) {
@@ -921,8 +904,8 @@ class Wetplot {
             let bTs = b[time_idx];
             let exactPos = (timestamp - aTs) / (bTs - aTs);
             (visible_only
-                ?this.getVisibleLineCodes()
-                :this.getAllLineCodes()
+                    ? this.getVisibleLineCodes()
+                    : this.getAllLineCodes()
             ).forEach(lineCode => {
                 let idx = this._data.heads.indexOf(lineCode);
                 let aVal = a[idx];

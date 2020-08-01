@@ -777,8 +777,7 @@ class Wetplot {
                 texts_y += scale(1);
                 txt.setAttribute("y", texts_y);
                 txt.style.display = "inline";
-            }
-            else {
+            } else {
                 txt.style.display = "none";
             }
         }
@@ -1013,6 +1012,7 @@ class Wetplot {
     }
 
     _seconds_to_values(timestamp, visible_only = false) {
+        const ybar_width_seconds = this._config["ybar_width_seconds"];
         let [a, b] = this._nearestTwoDataRows(timestamp);
         let result = {};
         if (a !== null || b !== null) {
@@ -1025,14 +1025,25 @@ class Wetplot {
             let aTs = a[time_idx];
             let bTs = b[time_idx];
             let exactPos = (timestamp - aTs) / (bTs - aTs);
+            let sumBeginTs = aTs - (aTs % ybar_width_seconds);
+            let sumBeginIndex = this._data.findNextBiggerValue(sumBeginTs);
+            let sumEndIndex = this._data.findNextBiggerValue(sumBeginTs + ybar_width_seconds);
             (visible_only
                     ? this.getVisibleLineCodes()
                     : this.getAllLineCodes()
             ).forEach(lineCode => {
-                let idx = this._data.heads.indexOf(lineCode);
-                let aVal = a[idx];
-                let bVal = b[idx];
-                result[lineCode] = (aVal) + (bVal - aVal) * exactPos;
+                let colIdx = this._data.heads.indexOf(lineCode);
+                if (this._line_config[lineCode]["type"] === "ybar") {
+                    let sum = 0;
+                    for (let i = sumBeginIndex; i < sumEndIndex; i++) {
+                        sum += this._data.values[i][colIdx];
+                    }
+                    result[lineCode] = sum;
+                } else {
+                    let aVal = a[colIdx];
+                    let bVal = b[colIdx];
+                    result[lineCode] = (aVal) + (bVal - aVal) * exactPos;
+                }
             });
         }
         return result;
@@ -1294,5 +1305,26 @@ class WetplotData {
             result[i] = [a + leave_gap * max_gap_seconds, b - leave_gap * max_gap_seconds];
         }
         return result
+    }
+
+    /**
+     * perform a binary search on a column. the column should be sorted ascending
+     * @param timestamp search value in seconds
+     * O(n) = log2(n) while n = number of records
+     * @param column the column name to perform the search on, default is "Time"
+     */
+    findNextBiggerValue(timestamp, column="Time") {
+        let lower = 0;
+        let upper = this.values.length;
+        const timeCol = this.getColumnIndex(column);
+        do {
+            let i = Math.floor((lower+upper) / 2);
+            if (this.values[i][timeCol] > timestamp) {
+                upper = i;
+            } else {
+                lower = i;
+            }
+        } while ((upper-lower)>1);
+        return upper;
     }
 }

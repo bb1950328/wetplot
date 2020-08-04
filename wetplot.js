@@ -1056,12 +1056,14 @@ class Wetplot {
     zoomIn() {
         this._config["seconds_per_pixel"] /= 2;
         this._config["seconds_per_grid_line"] /= 2;
+        this._config["ybar_width_seconds"] /= 2;
         this._redraw_all();
     }
 
     zoomOut() {
         this._config["seconds_per_pixel"] *= 2;
         this._config["seconds_per_grid_line"] *= 2;
+        this._config["ybar_width_seconds"] *= 2;
         this._redraw_all();
     }
 
